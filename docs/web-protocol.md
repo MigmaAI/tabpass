@@ -4,6 +4,8 @@ A website can ask Tabpass to connect it as an AI tool, so its AI can use the per
 
 The protocol is small on purpose: four methods over `window.postMessage`, nothing on the network. Code: [`extension/public/content/bridge.js`](../extension/public/content/bridge.js) (page side) and [`extension/public/lib/web-connect.js`](../extension/public/lib/web-connect.js) (extension side). A working page: [`e2e/fixtures/ai-site.html`](../e2e/fixtures/ai-site.html).
 
+Website authors can use the zero-dependency [`@migma/tabpass-connect` browser SDK](../connect/README.md) instead of implementing these messages directly. Install it with `npm install @migma/tabpass-connect`.
+
 ## Messages
 
 The page posts a request to its own window, and Tabpass posts the response back to the same window.
@@ -76,7 +78,7 @@ Asks the person to connect this site. Only works right after a click: otherwise 
 | `relay` | `true` | Only for relays (see below). |
 | `returnsTo` | string, up to 80 characters | Only for relays: where the sign-in goes back to, shown in the window. |
 
-Tabpass opens its window ("Connect Acme AI to your browser?") and answers once the person decides, or after 2 minutes. Keep the request open that long. The answer comes after Tabpass's relay has the new tool, so the token works at once.
+Tabpass opens its window ("Connect Acme AI to your browser?") and answers once the person decides, or after 2 minutes. Keep the request open that long. A successful response provides the credential, but the website's backend must initialize its MCP connection and verify the credential before the product reports Connected.
 
 If the site connected before with the same name, the new connection replaces the old one.
 
@@ -97,6 +99,7 @@ Removes every AI tool this site connected in this browser. Their tokens stop wor
 | `timeout` | Nobody answered within 2 minutes. |
 | `busy` | Tabpass is already asking the person about this site. |
 | `activation_required` | `connect` without a click, from a site Tabpass knows. |
+| `relay_unavailable` | Tabpass could not establish the relay connection for the new tool. The visible grant may still exist in Tabpass and can be removed there or with `disconnect`; the website must not report Connected. |
 | `invalid` | `relay: true` from a page that is not https (or `http://localhost`, `http://127.0.0.1`). |
 | `unknown_method` | The method does not exist. |
 
@@ -113,54 +116,49 @@ It reaches this browser through the relay the person set in Tabpass (by default 
 
 Send the token to your server and keep it there. Do not leave it in the page: any script running on the page can read it.
 
+Every participating website needs its own authenticated backend and MCP client. The backend allowlists the expected Tabpass endpoint, stores the token, calls `mcpUrl` with `Authorization: Bearer <token>`, and verifies the MCP connection before returning a connected state to the page. Never fetch an arbitrary page-provided `mcpUrl`: any script on the page can forge a same-origin `postMessage` response. Adding the browser SDK does not automatically enable ChatGPT, Claude, or another AI product.
+
+The page should POST the result to its authenticated same-site backend immediately, then drop its reference. Never put the token in `localStorage`, session storage, analytics, logs, or a URL. `connectorUrl` exists for MCP clients that can only accept a URL; do not use it as a browser navigation target because it contains the credential.
+
 ## Relays use it too
 
 A Tabpass relay's own sign-in page (MCP OAuth, `/authorize`) is a site that speaks this protocol. It calls `connect` with `relay: true`: the new tool then lives on the relay that served the page, and the token goes back to the AI tool that is signing in. The `returnsTo` text ("chatgpt.com", "an app on this computer") tells the person where it goes.
 
 With `relay: true`, Tabpass connects to `wss://<the page's host>/extension`. Each relay gets a key made for that relay alone (an HMAC of this browser's key and the relay's origin). A site that names itself as a relay learns nothing it could use to pose as this browser on another relay.
 
-## A complete example
+## Browser SDK example
 
-```html
-<button id="connect">Connect your browser</button>
-<script>
-  function ask(method, params = {}, timeoutMs = 130000) {
-    return new Promise((resolve, reject) => {
-      const id = crypto.randomUUID();
-      const timer = setTimeout(() => done(() => reject(Object.assign(new Error('Tabpass did not answer'), { code: 'no_answer' }))), timeoutMs);
-      function done(settle) {
-        clearTimeout(timer);
-        window.removeEventListener('message', onMessage);
-        settle();
-      }
-      function onMessage(event) {
-        const data = event.data;
-        if (event.source !== window || event.origin !== location.origin || data?.tabpass !== 'response' || data.id !== id) return;
-        done(() => (data.error ? reject(Object.assign(new Error(data.error.message), { code: data.error.code })) : resolve(data.result)));
-      }
-      window.addEventListener('message', onMessage);
-      window.postMessage({ tabpass: 'request', id, method, params }, location.origin);
+The SDK exposes `connect`, `hello`, `status`, `disconnect`, and `TabpassError`. `connect` accepts only the public website parameters `name` and `access`; relay-only parameters are intentionally unavailable. It does not retry, store credentials, make network requests, or navigate to an install page.
+
+```ts
+import { connect, TabpassError } from '@migma/tabpass-connect';
+
+document.querySelector('#connect')?.addEventListener('click', async () => {
+  try {
+    let { token, mcpUrl, access, name } = await connect({ name: 'Acme AI', access: 'read' });
+    const response = await fetch('/api/tabpass/connections', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token,
+        mcpUrl,
+        access,
+        name,
+      }),
     });
+    if (!response.ok) throw new Error('Your browser connection could not be verified.');
+    token = '';
+  } catch (error) {
+    if (error instanceof TabpassError && error.code === 'declined') return;
+    console.warn(error instanceof Error ? error.message : 'Tabpass connection failed');
   }
-
-  document.getElementById('connect').addEventListener('click', async () => {
-    try {
-      await ask('hello', {}, 1500); // answers at once if Tabpass is installed
-    } catch {
-      location.href = 'https://chromewebstore.google.com/detail/tabpass'; // your install link
-      return;
-    }
-    try {
-      const { token, mcpUrl, access } = await ask('connect', { name: 'Acme AI', access: 'read' });
-      await fetch('/api/tabpass', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, mcpUrl, access }) });
-    } catch (error) {
-      if (error.code !== 'declined') console.warn(error.message);
-    }
-  });
-</script>
+});
 ```
 
-`connect` still has the click: `hello` takes a few milliseconds, well inside the 5 seconds of activation.
+Call `connect` directly from the click handler. A preliminary `hello` probe is optional, but the site must not wait or navigate automatically when Tabpass stays silent.
+
+An SDK abort or timeout stops only the page's wait. It cannot close Tabpass's approval window or cancel a grant approved afterward. Recheck `status` before retrying; call `disconnect` when the person asks to remove the site's grants.
 
 ## Security
 
