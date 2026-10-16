@@ -54,7 +54,7 @@ function relayForOrigin(origin) {
   return null;
 }
 
-/** Waits until the relay has said welcome, so the new agent is usable when we answer. */
+/** Socket readiness only; the website's backend must verify the new MCP credential. */
 async function waitForRelay(relayUrl, timeoutMs = 8000) {
   const key = `status:${relayUrl}`;
   const deadline = Date.now() + timeoutMs;
@@ -117,7 +117,11 @@ async function connect(origin, params, connections) {
   await saveAgents([...current.filter((candidate) => candidate.id !== replaces?.id), agent]);
   await connections.sync();
   await connections.syncAgents();
-  await waitForRelay(relayUrl);
+  if (!await waitForRelay(relayUrl)) {
+    // Keep the grant visible and revocable. Restoring an old array here could overwrite
+    // another connection or permission change made while the relay was unavailable.
+    return failure('relay_unavailable', 'Tabpass could not connect to its relay. Try again when it is online.');
+  }
   await addActivity({ agent: name, tool: 'connected', site: hostOf(origin), ok: true });
 
   const mcpUrl = mcpUrlFor(relayUrl);

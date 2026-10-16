@@ -1,0 +1,41 @@
+{
+  "name": "@migma/tabpass-connect",
+  "version": "0.1.0",
+  "description": "Zero-dependency browser SDK for the Tabpass Web Protocol.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "yarn build && node --test test/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MigmaAI/tabpass.git",
+    "directory": "connect"
+  },
+  "keywords": [
+    "tabpass",
+    "mcp",
+    "browser",
+    "ai-agents"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}
