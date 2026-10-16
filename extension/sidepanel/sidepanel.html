@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Migma Tabs</title>
+    <link rel="stylesheet" href="panel.css" />
+  </head>
+  <body>
+    <header class="bar">
+      <div class="brand">
+        <img src="../icons/icon-32.png" alt="" width="20" height="20" />
+        <h1>Migma Tabs</h1>
+      </div>
+      <span class="status" id="status" role="status"></span>
+    </header>
+
+    <main>
+      <div id="prompts" class="list" hidden></div>
+
+      <section class="block" aria-labelledby="agents-title">
+        <div class="head">
+          <h2 id="agents-title">Agents</h2>
+          <label class="switch" style="margin-left: auto">
+            <span id="enabled-label">On</span>
+            <input type="checkbox" id="enabled" aria-label="Let agents use the browser" />
+          </label>
+        </div>
+        <p class="lead">Your AI agents can read and use your tabs. You approve each new site.</p>
+        <ul id="agents" class="list"></ul>
+
+        <button type="button" class="btn primary block-btn" id="add-agent" style="margin-top: 12px">Connect an agent</button>
+        <form id="agent-form" class="field" style="margin-top: 12px; gap: 12px" hidden>
+          <label class="field">
+            <span>Name</span>
+            <input type="text" id="agent-name" maxlength="40" placeholder="Claude" autocomplete="off" required />
+          </label>
+          <div class="chips" id="name-chips"></div>
+          <div class="field">
+            <span>It can</span>
+            <div class="segmented" role="radiogroup" aria-label="Access">
+              <label><input type="radio" name="access" value="read" checked />Read</label>
+              <label><input type="radio" name="access" value="control" />Read and act</label>
+            </div>
+            <p class="hint" id="access-hint"></p>
+          </div>
+          <p class="error-text" id="agent-error" hidden></p>
+          <div class="actions end">
+            <button type="button" class="btn ghost" id="cancel-agent">Cancel</button>
+            <button type="submit" class="btn primary">Connect</button>
+          </div>
+        </form>
+      </section>
+
+      <details class="block" id="activity-block">
+        <summary>Activity <span class="count" id="activity-count"></span></summary>
+        <div class="body">
+          <ul class="list activity" id="activity"></ul>
+          <div class="actions end"><button type="button" class="btn ghost small" id="clear-activity">Clear</button></div>
+        </div>
+      </details>
+
+      <details class="block">
+        <summary>Sites</summary>
+        <div class="body">
+          <label class="switch">
+            <input type="checkbox" id="allow-all" />
+            <span>Allow every site without asking</span>
+          </label>
+          <div class="field">
+            <span>Always allowed</span>
+            <ul class="list site-list" id="allowed-sites"></ul>
+          </div>
+          <div class="field">
+            <span>Blocked</span>
+            <ul class="list site-list" id="blocked-sites"></ul>
+          </div>
+          <form class="inline-form" id="site-form">
+            <label class="sr-only" for="site-input">Site</label>
+            <input type="text" id="site-input" placeholder="example.com" autocomplete="off" />
+            <button type="submit" class="btn small" data-list="allowed">Allow</button>
+            <button type="submit" class="btn small" data-list="blocked">Block</button>
+          </form>
+        </div>
+      </details>
+
+      <details class="block" id="relay-block">
+        <summary>Relay</summary>
+        <div class="body">
+          <p class="hint">The server that carries your agents' requests to this browser.</p>
+          <form class="inline-form" id="relay-form">
+            <label class="sr-only" for="relay-input">Relay address</label>
+            <input type="url" id="relay-input" placeholder="wss://relay.example.com/extension" autocomplete="off" />
+            <button type="submit" class="btn small">Save</button>
+          </form>
+          <p class="error-text" id="relay-error" hidden></p>
+          <p class="hint" id="relay-status"></p>
+        </div>
+      </details>
+    </main>
+
+    <script type="module" src="sidepanel.js"></script>
+  </body>
+</html>
