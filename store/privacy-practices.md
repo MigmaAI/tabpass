@@ -9,7 +9,7 @@ Items marked **[confirm]** depend on work still in progress.
 ## Single purpose
 
 ```
-Tabpass lets AI agents that the user connects (any MCP client, such as Claude, ChatGPT or Cursor, or the user's Migma account) read and use the user's open Chrome tabs, with the user's approval for each site. Everything in the extension serves that purpose: the side panel to connect and remove agents, the per-site approval prompt, and the tools agents call (list tabs, read a page, read highlighted text, take a screenshot, and, if the user allows it, open tabs, click, type and scroll).
+Tabpass lets AI agents that the user connects (any MCP client, such as Claude, ChatGPT or Cursor) read and use the user's open Chrome tabs, with the user's approval for each site. Everything in the extension serves that purpose: the side panel to connect and remove agents, the per-site approval prompt, and the tools agents call (list tabs, read a page, read highlighted text, take a screenshot, and, if the user allows it, open tabs, click, type and scroll).
 ```
 
 ## Permission justifications
@@ -67,7 +67,7 @@ The script and its protocol are specified in `docs/web-protocol.md`. If it ever 
 The dashboard does not list this as a permission; reviewers see it in the manifest. If asked, or in **Test instructions**, use:
 
 ```
-Only https://migma.ai and its subdomains can send messages to Tabpass. Migma's connect page uses this to hand over a connection after the user clicks "Connect" next to Migma in Tabpass. A page can connect only with the single-use code from the user's own click, or after the user confirms in Tabpass's window. Tabpass checks the sender's origin again before acting.
+The manifest reserves external messaging for https://migma.ai and its subdomains. Account providers are disabled in this release, so these messages cannot connect a Migma account. The separately documented web protocol still requires the user's confirmation in Tabpass's own window before connecting a website as an AI tool.
 ```
 
 ## Remote code
@@ -126,7 +126,6 @@ No account is needed.
 4. Call "list_tabs", then "read_page" with a tab id. Tabpass opens a window asking "Allow Reviewer to use <site>?". Choose "Allow for 10 minutes" and the page text comes back.
 5. Call "read_page" on a tab of another site and choose "Block this site": that site disappears from list_tabs and later calls to it are refused.
 Sign-in instead of a link: in the Inspector, connect to https://tabs.migma.ai/mcp. It opens the Tabpass sign-in page, and Tabpass opens a window to approve it.
-The Migma row needs a Migma account and can be skipped.
 ```
 
 **[confirm]** Run these steps against the store build and the hosted relay before submitting.

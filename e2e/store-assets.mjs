@@ -178,6 +178,7 @@ try {
   await panel.getByRole('button', { name: 'Got it' }).click();
   await panel.evaluate(() => chrome.runtime.sendMessage({ type: 'setBrowserName', browserName: 'Work laptop' }));
   await panel.getByRole('status').getByText('Connected · Work laptop').waitFor({ timeout: 15000 });
+  assert.equal(await panel.getByRole('region', { name: 'Migma', exact: true }).count(), 0, 'Store builds must not offer the unfinished Migma connection');
 
   // Two tools connect with a link; each panel shot shows the moment its prompt belongs to.
   const cursor = await agent(await keyLink(panel, 'Cursor', false));

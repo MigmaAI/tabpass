@@ -1,4 +1,4 @@
-import { LaptopIcon, PlusIcon, ShieldIcon } from 'lucide-react';
+import { CircleAlertIcon, CircleCheckIcon, LaptopIcon, PlusIcon, ShieldIcon } from 'lucide-react';
 
 import { IconTile } from '@/components/ios/IconTile';
 import { ListRow, ListSection } from '@/components/ios/List';
@@ -37,17 +37,20 @@ function HomeScreen({ state, onChange }: ScreenProps) {
   const version = chrome.runtime.getManifest().version;
 
   return (
-    <div className="grid gap-6 px-4 pt-3 pb-8">
-      <header className="flex items-end justify-between gap-3 px-1 pt-4">
-        <div className="grid gap-1">
-          <h1 className="text-[30px] leading-9 font-bold tracking-[-0.02em]">Tabpass</h1>
-          <p className="flex items-center gap-1.5 text-[13px] text-muted-foreground" role="status">
-            <span
-              aria-hidden
-              className={cn('size-2 rounded-full', status.tone === 'ok' ? 'bg-success' : status.tone === 'wait' ? 'bg-warning' : 'bg-muted-foreground')}
-            />
-            {status.text}
-          </p>
+    <div className="grid gap-5 px-4 pt-3 pb-8">
+      <header className="flex items-center justify-between gap-3 px-1 py-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <img src="/icons/icon-48.png" alt="" width={40} height={40} className="size-10 shrink-0 rounded-xl" />
+          <div className="grid min-w-0 gap-0.5">
+            <h1 className="text-[25px] leading-8 font-bold tracking-[-0.02em]">Tabpass</h1>
+            <p className="flex items-center gap-1.5 text-[13px] text-muted-foreground" role="status">
+              <span
+                aria-hidden
+                className={cn('size-2 rounded-full', status.tone === 'ok' ? 'bg-success' : status.tone === 'wait' ? 'bg-warning' : 'bg-muted-foreground')}
+              />
+              {status.text}
+            </p>
+          </div>
         </div>
         <Toggle
           checked={!state.settings.paused}
@@ -126,6 +129,7 @@ function HomeScreen({ state, onChange }: ScreenProps) {
           recent.map((entry, index) => (
             <ListRow
               key={`${entry.at}-${index}`}
+              icon={entry.ok ? <CircleCheckIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden /> : <CircleAlertIcon className="size-4 shrink-0 text-destructive" aria-hidden />}
               title={`${entry.agent} · ${entry.tool.replace(/_/g, ' ')}`}
               subtitle={
                 entry.ok ? (
@@ -143,7 +147,7 @@ function HomeScreen({ state, onChange }: ScreenProps) {
       <ListSection>
         <ListRow
           icon={
-            <IconTile color="#34c759">
+            <IconTile color="var(--success)">
               <ShieldIcon />
             </IconTile>
           }
@@ -153,7 +157,7 @@ function HomeScreen({ state, onChange }: ScreenProps) {
         />
         <ListRow
           icon={
-            <IconTile color="#8e8e93">
+            <IconTile color="var(--muted-foreground)">
               <LaptopIcon />
             </IconTile>
           }

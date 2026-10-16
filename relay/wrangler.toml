@@ -11,7 +11,7 @@ main = "src/worker/index.ts"
 compatibility_date = "2026-10-01"
 compatibility_flags = ["nodejs_compat"]
 
-# routes = [{ pattern = "tabs.migma.ai", custom_domain = true }]
+routes = [{ pattern = "tabs.migma.ai", custom_domain = true }]
 
 [vars]
 PUBLIC_URL = "https://tabs.migma.ai"

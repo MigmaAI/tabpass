@@ -1,9 +1,8 @@
 import { useState } from 'react';
 
 import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { IconTile } from '@/components/ios/IconTile';
 import { Pill } from '@/components/ios/Pill';
-import { guideForName } from '@/components/tiles';
+import { NamedClientTile } from '@/components/tiles';
 import { send, type SitePrompt, type SitePromptDecision } from '@/lib/api';
 
 import { PromptLayout } from './PromptLayout';
@@ -16,7 +15,6 @@ const WHAT = {
 /** "Allow Claude to use figma.com?" One main answer, two quieter ones, rare choices below. */
 function SiteAccessPrompt({ prompt }: { prompt: SitePrompt }) {
   const [confirmAll, setConfirmAll] = useState(false);
-  const guide = guideForName(prompt.agentLabel);
   const decide = async (decision: SitePromptDecision): Promise<void> => {
     await send('promptDecision', { id: prompt.id, decision });
     window.close();
@@ -25,11 +23,7 @@ function SiteAccessPrompt({ prompt }: { prompt: SitePrompt }) {
   return (
     <>
       <PromptLayout
-        tile={
-          <IconTile color={guide?.color ?? 'var(--primary)'} size="lg" className={guide ? undefined : 'text-primary-foreground'}>
-            {guide?.monogram ?? prompt.agentLabel.slice(0, 2)}
-          </IconTile>
-        }
+        tile={<NamedClientTile name={prompt.agentLabel} size="lg" />}
         title={`Allow ${prompt.agentLabel} to use ${prompt.site}?`}
         message={
           <>

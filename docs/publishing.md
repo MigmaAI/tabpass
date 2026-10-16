@@ -86,7 +86,7 @@ These keys can upload and publish **every** item of this publisher. Revoke the O
    node scripts/package.mjs
    ```
    It checks the build (no "(dev)" name, no localhost in `externally_connectable`, no `key`, versions match, every icon and referenced file present, default relay over `wss://`) and writes `release/tabpass-<version>.zip` with `manifest.json` at the root. It prints the size and SHA-256. `--check` validates without writing.
-8. **Smoke test the zip** in a fresh Chrome profile: unzip, **Load unpacked**, and check that the panel says "Connected", a tool can sign in with `https://tabs.migma.ai/mcp`, the site prompt appears, and **Connect** next to Migma opens Migma's connect page.
+8. **Smoke test the zip** in a fresh Chrome profile: unzip, **Load unpacked**, and check that the panel says "Connected", a tool can sign in with `https://tabs.migma.ai/mcp`, the site prompt appears, and no Migma Connect row is shown. Migma account connections remain development-only until Migma's integration ships.
 9. **Tag and push:**
    ```bash
    git tag extension-v0.3.0 && git push origin extension-v0.3.0

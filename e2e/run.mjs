@@ -51,7 +51,7 @@ function serve(handler, port = 0, host = '127.0.0.1') {
   return new Promise((resolve) => server.listen(port, host, () => resolve(server)));
 }
 
-// ---------- fixture sites ("127.0.0.1", "localhost", "127.0.0.2") ----------
+// ---------- fixture sites ("127.0.0.1", "localhost", "tabpass.localhost") ----------
 
 const fixtures = await serve(
   async (req, res) => {
@@ -71,7 +71,9 @@ const fixtures = await serve(
 const fixturePort = fixtures.address().port;
 const siteA = `http://127.0.0.1:${fixturePort}`;
 const siteB = `http://localhost:${fixturePort}`;
-const siteC = `http://127.0.0.2:${fixturePort}`;
+// A separate, unknown loopback origin without requiring an extra IP alias on macOS.
+// The .localhost suffix preserves the fixture's secure context (crypto.randomUUID).
+const siteC = `http://tabpass.localhost:${fixturePort}`;
 
 // ---------- relay: OAuth on, account mode verifying against the fake Migma ----------
 
@@ -156,7 +158,13 @@ const context = await chromium.launchPersistentContext(userDataDir, {
   headless: false,
   executablePath,
   viewport: { width: 1200, height: 800 },
-  args: [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`, '--no-first-run'],
+  args: [
+    `--disable-extensions-except=${extensionPath}`,
+    `--load-extension=${extensionPath}`,
+    '--no-first-run',
+    '--no-proxy-server',
+    '--host-resolver-rules=MAP tabpass.localhost 127.0.0.1',
+  ],
 });
 
 let exitCode = 0;
@@ -369,7 +377,7 @@ try {
     const promptOpened = waitForPage('prompt.html?agent=');
     await site.getByRole('button', { name: 'Connect your browser' }).click();
     const prompt = await promptOpened;
-    await prompt.getByText('127.0.0.2:' + fixturePort + ' asked to connect.', { exact: false }).waitFor();
+    await prompt.getByText('tabpass.localhost:' + fixturePort + ' asked to connect.', { exact: false }).waitFor();
     await prompt.getByRole('button', { name: 'Connect', exact: true }).click();
     await site.locator('#result').getByText('"token":"tp_').waitFor({ timeout: 10000 });
     const { token, mcpUrl, access } = JSON.parse(await site.locator('#result').textContent());

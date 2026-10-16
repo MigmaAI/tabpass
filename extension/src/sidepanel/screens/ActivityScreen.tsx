@@ -1,3 +1,5 @@
+import { CircleAlertIcon, CircleCheckIcon } from 'lucide-react';
+
 import { ListRow, ListSection } from '@/components/ios/List';
 import { NavBar } from '@/components/ios/NavBar';
 import { send, type TabpassState } from '@/lib/api';
@@ -27,6 +29,7 @@ function ActivityScreen({ state, onChange }: { state: TabpassState; onChange: ()
           {state.activity.map((entry, index) => (
             <ListRow
               key={`${entry.at}-${index}`}
+              icon={entry.ok ? <CircleCheckIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden /> : <CircleAlertIcon className="size-4 shrink-0 text-destructive" aria-hidden />}
               title={`${entry.agent} · ${entry.tool.replace(/_/g, ' ')}`}
               subtitle={entry.ok ? [entry.site, timeAgo(entry.at)].filter(Boolean).join(' · ') : <span className="text-destructive">{entry.detail}</span>}
             />
