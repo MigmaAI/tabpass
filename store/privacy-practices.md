@@ -116,7 +116,13 @@ https://migma.ai/tabpass/privacy
 
 ## Test instructions (for reviewers)
 
-If the dashboard shows a **Test instructions** tab, paste:
+The dashboard's **Test instructions > Additional instructions** field allows 500 characters. Paste this 495-character version:
+
+```
+No account needed. Install, open Tabpass, click Got it. Run npx @modelcontextprotocol/inspector. Select Streamable HTTP and https://tabs.migma.ai/mcp; connect, then approve Read in Tabpass. Call list_tabs. Call read_page with a tabId; choose Allow for 10 minutes. Repeat on another site and choose Block this site; verify it disappears from list_tabs. Key-link flow: Connect an AI tool > Make a link with a key. Full steps: https://github.com/MigmaAI/tabpass/blob/main/store/privacy-practices.md
+```
+
+### Full reviewer steps
 
 ```
 No account is needed.
