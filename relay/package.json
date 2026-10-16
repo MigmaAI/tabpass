@@ -1,22 +1,25 @@
 {
   "name": "@tabpass/relay",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Remote MCP relay that lets AI agents read and use the tabs of a browser running the Tabpass extension.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "tabpass-relay": "dist/cli.js"
+    "tabpass-relay": "dist/node/cli.js"
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "dev": "tsx watch src/cli.ts",
-    "start": "node dist/cli.js",
-    "typecheck": "tsc -p tsconfig.check.json",
-    "test": "vitest run"
+    "build": "rm -rf dist && tsc -p tsconfig.json",
+    "dev": "tsx watch src/node/cli.ts",
+    "start": "node dist/node/cli.js",
+    "typecheck": "tsc -p tsconfig.check.json && tsc -p tsconfig.worker.json",
+    "test": "vitest run",
+    "test:worker": "TABPASS_WORKER=1 vitest run test/worker.test.ts",
+    "dev:worker": "wrangler dev",
+    "deploy:worker": "wrangler deploy"
   },
   "engines": {
     "node": ">=20"
@@ -27,11 +30,13 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "5.20261016.1",
     "@types/node": "^22.10.0",
     "@types/ws": "^8.18.1",
     "tsx": "^4.20.0",
     "typescript": "^5.9.0",
-    "vitest": "^3.2.0"
+    "vitest": "^3.2.0",
+    "wrangler": "4.151.0"
   },
   "license": "MIT",
   "keywords": [

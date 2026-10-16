@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Tabpass",
   "short_name": "Tabpass",
-  "version": "0.2.0",
-  "description": "Let any AI agent read and use your open tabs over MCP. You approve each new site. Open source, by Migma.",
+  "version": "0.3.0",
+  "description": "Let Claude, ChatGPT, Cursor or any AI tool read and use your open tabs. You approve each new site. Open source.",
   "minimum_chrome_version": "116",
   "icons": {
     "16": "icons/icon-16.png",
@@ -41,5 +41,18 @@
       "https://migma.ai/*",
       "https://*.migma.ai/*"
     ]
-  }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "content/bridge.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ]
 }

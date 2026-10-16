@@ -42,3 +42,16 @@ export const GROUP_COLORS: Record<string, string> = {
   cyan: '#06b6d4',
   orange: '#f97316',
 };
+
+/** A relay on this computer: tools that connect from the cloud cannot reach it. */
+export function isLocalRelay(url: string): boolean {
+  return /^(https?|wss?):\/\/(localhost|127\.0\.0\.1)(:|\/)/.test(url);
+}
+
+export function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}

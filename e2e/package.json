@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "test": "node run.mjs",
-    "icons": "node make-icons.mjs"
+    "icons": "node make-icons.mjs",
+    "store-assets": "node store-assets.mjs"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",

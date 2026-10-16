@@ -3,9 +3,9 @@ import { createServer, type Server } from 'node:http';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { httpAccountVerifier, type AccountVerifier, type BrowserAccount, type PresentingBrowser } from '../src/accounts.js';
-import type { AccountCredential, ToolResult } from '../src/protocol.js';
-import { createRelayServer, type RelayServer } from '../src/server.js';
+import { httpAccountVerifier, type AccountVerifier, type BrowserAccount, type PresentingBrowser } from '../src/core/accounts.js';
+import type { AccountCredential, ToolResult } from '../src/core/protocol.js';
+import { createRelayServer, type RelayServer } from '../src/node/server.js';
 
 import { FakeExtension, makeAgent } from './helpers.js';
 
@@ -94,8 +94,8 @@ describe('account mode', () => {
     const extension = await browser(provider.issue('user_alice', 'Alice'), 'Chrome on Mac');
     const welcome = await extension.next('welcome');
     expect(welcome.account).toEqual({ status: 'ok', name: 'Alice' });
-    expect(provider.seen[0]).toEqual({ browserId: extension.browserId, name: 'Chrome on Mac' });
-    expect(relay.hub.stats().accounts).toBe(1);
+    expect(provider.seen[0]).toEqual({ browserId: await extension.browserId(), name: 'Chrome on Mac' });
+    expect((await relay.directory.stats()).accounts).toBe(1);
   });
 
   it('routes a call for a person to their browser, marked as an account call', async () => {
@@ -121,16 +121,16 @@ describe('account mode', () => {
   it('rejects an unknown credential and tells the browser to forget it', async () => {
     const extension = await browser(credential());
     expect((await extension.next('welcome')).account).toEqual({ status: 'invalid' });
-    expect(relay.hub.stats().accounts).toBe(0);
+    expect((await relay.directory.stats()).accounts).toBe(0);
   });
 
   it('keeps token agents working on the same connection', async () => {
     const extension = new FakeExtension();
     extensions.push(extension);
-    const agent = makeAgent(extension.browserKey, 'Claude', 'read');
+    const agent = await makeAgent(extension.browserKey, 'Claude', 'read');
     await extension.connect(wsUrl, [agent], { account: provider.issue('user_alice') });
     await callFor('user_alice', 'list_tabs');
-    expect(relay.hub.lookupAgent({ browserId: extension.browserId, tokenHash: agent.tokenHash }).status).toBe('ok');
+    expect((await relay.directory.lookupAgent({ browserId: await extension.browserId(), tokenHash: agent.tokenHash })).status).toBe('ok');
   });
 
   it('uses the most recently active of several browsers, or the one named', async () => {
@@ -165,7 +165,7 @@ describe('account mode', () => {
     const pending = callFor('user_alice', 'list_tabs');
     await new Promise((resolve) => setTimeout(resolve, 50));
 
-    const response = await internal(`connections/${issued.connectionId}/revoke`);
+    const response = await internal(`accounts/user_alice/connections/${issued.connectionId}/revoke`);
     expect(await response.json()).toEqual({ revoked: 1 });
     expect(textOf(await pending)).toMatch(/connection to this browser was removed/);
     expect(await extension.next('account')).toEqual({ type: 'account', status: 'invalid' });
@@ -182,7 +182,7 @@ describe('account mode', () => {
       reverifyMs: 100_000,
     });
     // Drive the heartbeat by hand instead of waiting for timers.
-    const hub = relay.hub as unknown as { tick: () => void; browsers: Map<string, { verifiedAt: number }> };
+    const hub = relay.directory as unknown as { tick: () => void; browsers: Map<string, { verifiedAt: number }> };
     const port = await relay.listen(0, '127.0.0.1');
     base = `http://127.0.0.1:${port}`;
     wsUrl = `ws://127.0.0.1:${port}/extension`;
@@ -225,7 +225,7 @@ describe('account mode', () => {
     expect(badArgs.status).toBe(400);
 
     const browsers = await internal('accounts/user_alice/browsers', { method: 'GET' });
-    expect((await browsers.json()).browsers).toHaveLength(1);
+    expect(((await browsers.json()) as { browsers: unknown[] }).browsers).toHaveLength(1);
   });
 
   it('turns the internal API off entirely when no secret is configured', async () => {

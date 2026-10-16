@@ -13,4 +13,4 @@ COPY --from=build /app/dist ./dist
 COPY package.json ./
 EXPOSE 8787
 USER node
-CMD ["node", "dist/cli.js"]
+CMD ["node", "dist/node/cli.js"]

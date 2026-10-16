@@ -14,6 +14,14 @@ export interface Agent {
   color: string;
   createdAt: number;
   lastUsedAt: number | null;
+  relayUrl: string;
+  /** The MCP address of the agent's relay. */
+  mcpUrl: string;
+  relay: RelayStatus;
+  /** How it was connected: by hand, by a website, or by an AI tool signing in (OAuth). */
+  source?: 'manual' | 'web' | 'oauth';
+  origin?: string;
+  returnsTo?: string | null;
 }
 
 export interface RelayStatus {
@@ -50,6 +58,18 @@ export interface SitePrompt {
   url: string;
 }
 
+export interface AgentPrompt {
+  id: string;
+  origin: string;
+  site: string;
+  name: string;
+  requestedAccess: Access;
+  relayHost: string;
+  viaRelay: boolean;
+  returnsTo: string | null;
+  replaces: boolean;
+}
+
 export interface ConnectPrompt {
   id: string;
   provider: string;
@@ -68,13 +88,16 @@ export interface ActivityEntry {
 }
 
 export interface TabpassState {
-  settings: { relayUrl: string; paused: boolean; allowAllSites: boolean; browserName: string };
+  settings: { relayUrl: string; paused: boolean; allowAllSites: boolean; browserName: string; welcomed?: boolean };
   status: RelayStatus;
+  /** The one address any AI tool can use (it signs in with OAuth). */
+  mcpUrl: string;
   agents: Agent[];
   providers: Provider[];
   sites: { allowed: string[]; blocked: string[] };
   prompts: SitePrompt[];
   connectPrompts: ConnectPrompt[];
+  agentPrompts: AgentPrompt[];
   activity: ActivityEntry[];
 }
 
