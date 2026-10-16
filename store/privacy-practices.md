@@ -35,7 +35,7 @@ When an agent the user connected calls a tool on a tab, and the user has allowed
 ### storage
 
 ```
-Stores the user's settings on their device: the relay address, the browser's name, the agents the user connected (name, access level, link), the always-allowed and blocked site lists, an account connection if the user made one, and a log of the last 60 agent calls shown in the side panel. Session storage keeps 10-minute site grants, pending prompts and connection status until the browser closes.
+Stores the user's settings on their device: the relay address, the browser's name, the AI tools the user connected (name, access level, link, and the site that connected it, if any), the always-allowed and blocked site lists, an account connection if the user made one, and a log of the last 60 agent calls shown in the side panel. Session storage keeps 10-minute site grants, pending prompts and connection status until the browser closes.
 ```
 
 ### sidePanel
@@ -55,19 +55,19 @@ A 30-second alarm wakes the service worker to check its connection to the relay 
 The dashboard has one field for host permissions, which also covers the content script's matches. Paste both paragraphs.
 
 ```
-The user decides which sites their agents may use, and that can be any site they work on, so Tabpass cannot list the sites in advance. The host permission lets Tabpass run its packaged page script, capture a screenshot of the visible tab (captureVisibleTab), and read Google Docs and Sheets through their export address, but only after an agent the user connected asks for that tab and the user has allowed that site in Tabpass's own prompt ("Always allow", "Allow for 10 min", "Decline" or "Block this site"). Blocked sites are never touched and are hidden from agents. activeTab does not fit: agents work while the user is elsewhere, with no click on the tab.
+The user decides which sites their agents may use, and that can be any site they work on, so the sites cannot be listed in advance. The host permission lets Tabpass run its packaged page script, capture the visible tab (captureVisibleTab) and read Google Docs and Sheets through their export address, only after a connected agent asks for that tab and the user has allowed that site in Tabpass's own prompt. Blocked sites are never touched and are hidden from agents. activeTab does not fit: agents work while the user is elsewhere, with no click on the tab.
 
-Content script on all sites (content/bridge.js): a small script that only lets a web page detect that Tabpass is installed and ask to connect. It does not read page content and sends nothing to any server. A connection is made only after the user clicks or confirms in Tabpass's own window.
+Content script on all sites (content/bridge.js): a small script that lets a web page ask to connect as an AI tool. It answers a page only right after the user clicks on it, or if the user connected that site before, so pages cannot use it to detect Tabpass. It does not read page content and sends nothing to any server. A site is connected only after the user confirms in Tabpass's own window.
 ```
 
-**[confirm]** The second paragraph describes the planned `content/bridge.js` (Tabpass Web Protocol). Check it against the final code before submitting: if the script exposes more than "installed, version, ask to connect" to any page, say so here and in `PRIVACY.md`.
+The script and its protocol are specified in `docs/web-protocol.md`. If it ever exposes more than "installed, version, connected, ask to connect", update this answer and `PRIVACY.md`.
 
 ### externally_connectable (migma.ai)
 
 The dashboard does not list this as a permission; reviewers see it in the manifest. If asked, or in **Test instructions**, use:
 
 ```
-Only https://migma.ai and its subdomains can send messages to Tabpass. Migma's connect page uses this to hand over a connection after the user clicks "Connect to Migma" in Tabpass. A page can connect only with the single-use code from the user's own click, or after the user confirms in Tabpass's window. Tabpass checks the sender's origin again before acting.
+Only https://migma.ai and its subdomains can send messages to Tabpass. Migma's connect page uses this to hand over a connection after the user clicks "Connect" next to Migma in Tabpass. A page can connect only with the single-use code from the user's own click, or after the user confirms in Tabpass's window. Tabpass checks the sender's origin again before acting.
 ```
 
 ## Remote code
@@ -120,12 +120,13 @@ If the dashboard shows a **Test instructions** tab, paste:
 
 ```
 No account is needed.
-1. Install Tabpass and click its toolbar icon. The side panel opens and shows "Connected" under Agents.
-2. Click "Connect an agent", type a name, keep "Read", click "Connect". Copy the Claude Code command or the Connector URL shown.
-3. In a terminal, run the MCP Inspector: npx @modelcontextprotocol/inspector . Choose "Streamable HTTP", paste the Connector URL, and connect.
-4. Call "list_tabs", then "read_page" with a tab id. Tabpass opens a window asking "Allow <name> to use <site>?". Choose "Allow for 10 min" and the page text comes back.
-5. Click "Block this site" on another site's prompt: that site disappears from list_tabs and every later call to it is refused.
-The Migma card needs a Migma account and can be skipped.
+1. Install Tabpass and click its toolbar icon. The side panel opens and says "Connected". Click "Got it".
+2. Click "Connect an AI tool", then "Make a link with a key". Type a name (for example "Reviewer"), keep "Read", click "Make the link", and copy it.
+3. In a terminal, run the MCP Inspector: npx @modelcontextprotocol/inspector . Choose "Streamable HTTP", paste the link, and connect.
+4. Call "list_tabs", then "read_page" with a tab id. Tabpass opens a window asking "Allow Reviewer to use <site>?". Choose "Allow for 10 minutes" and the page text comes back.
+5. Call "read_page" on a tab of another site and choose "Block this site": that site disappears from list_tabs and later calls to it are refused.
+Sign-in instead of a link: in the Inspector, connect to https://tabs.migma.ai/mcp. It opens the Tabpass sign-in page, and Tabpass opens a window to approve it.
+The Migma row needs a Migma account and can be skipped.
 ```
 
-**[confirm]** Run these steps against the store build and the hosted relay before submitting, and adjust the wording to the final UI (for example, if the OAuth "one address" flow replaces the copied link).
+**[confirm]** Run these steps against the store build and the hosted relay before submitting.

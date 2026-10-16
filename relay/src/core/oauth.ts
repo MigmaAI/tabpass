@@ -19,6 +19,8 @@ export interface OAuthOptions {
   directory: BrowserDirectory;
   /** Where the authorize page sends people who do not have the extension yet. */
   installUrl: string;
+  /** Fetches a Client ID Metadata Document. Replaceable in tests; defaults to a guarded fetch. */
+  fetchClientMetadata?: (url: string) => Promise<unknown>;
 }
 
 const CLIENT_PREFIX = 'tpc_';
@@ -27,6 +29,9 @@ const TICKET_TTL_MS = 15 * 60_000;
 const CODE_TTL_MS = 2 * 60_000;
 const SCOPES: Record<AgentAccess, string> = { read: 'tabs:read', control: 'tabs:read tabs:control' };
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
+const METADATA_TTL_MS = 10 * 60_000;
+const METADATA_MAX_BYTES = 10_000;
+const IP_LITERAL = /^(\d{1,3}(\.\d{1,3}){3}|\[[0-9a-f:.]+\])$/i;
 const BLOCKED_SCHEMES = new Set(['javascript:', 'data:', 'file:', 'blob:', 'about:', 'vbscript:']);
 
 interface ClientRecord {
@@ -58,6 +63,29 @@ interface Code {
   sc: AgentAccess;
   exp: number;
   jti: string;
+}
+
+/**
+ * Client ID Metadata Documents (the MCP auth spec's preferred client identity; Claude, Zed and
+ * Goose use it): the client_id is an https URL serving the client's metadata. Only plain
+ * hostnames over https, small documents and short timeouts, so the relay cannot be aimed at
+ * internal addresses or held open.
+ */
+export function isMetadataUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.pathname !== '/' && !url.hash && !url.username && !LOOPBACK.has(url.hostname) && !IP_LITERAL.test(url.hostname) && url.hostname.includes('.');
+  } catch {
+    return false;
+  }
+}
+
+async function fetchMetadata(url: string): Promise<unknown> {
+  const response = await fetch(url, { headers: { Accept: 'application/json' }, redirect: 'error', signal: AbortSignal.timeout(5000) });
+  if (!response.ok) throw new Error(`Client metadata answered ${response.status}`);
+  const text = await response.text();
+  if (text.length > METADATA_MAX_BYTES) throw new Error('Client metadata is too large');
+  return JSON.parse(text);
 }
 
 function json(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
@@ -141,6 +169,7 @@ async function readForm(request: Request): Promise<Record<string, string>> {
 export class OAuthServer {
   readonly resourceMetadataUrl: string;
   private readonly issuer: string;
+  private readonly metadataCache = new Map<string, { record: ClientRecord | null; at: number }>();
 
   constructor(private readonly options: OAuthOptions) {
     this.issuer = options.publicUrl.replace(/\/+$/, '');
@@ -192,6 +221,7 @@ export class OAuthServer {
       token_endpoint_auth_methods_supported: ['none'],
       scopes_supported: ['tabs:read', 'tabs:control'],
       authorization_response_iss_parameter_supported: true,
+      client_id_metadata_document_supported: true,
       service_documentation: `${this.issuer}/llms.txt`,
     });
   }
@@ -225,9 +255,40 @@ export class OAuthServer {
   }
 
   private async client(clientId: string | null): Promise<ClientRecord | null> {
-    if (!clientId?.startsWith(CLIENT_PREFIX)) return null;
+    if (!clientId) return null;
+    if (isMetadataUrl(clientId)) return this.metadataClient(clientId);
+    if (!clientId.startsWith(CLIENT_PREFIX)) return null;
     const record = await this.options.sealer.verify<ClientRecord>(clientId.slice(CLIENT_PREFIX.length));
     return record && Array.isArray(record.r) && typeof record.n === 'string' ? record : null;
+  }
+
+  private async metadataClient(url: string): Promise<ClientRecord | null> {
+    const cached = this.metadataCache.get(url);
+    if (cached && Date.now() - cached.at < METADATA_TTL_MS) return cached.record;
+    let record: ClientRecord | null = null;
+    try {
+      const document = (await (this.options.fetchClientMetadata ?? fetchMetadata)(url)) as {
+        client_id?: unknown;
+        client_name?: unknown;
+        redirect_uris?: unknown;
+      };
+      const uris = Array.isArray(document?.redirect_uris) ? document.redirect_uris : [];
+      // The document must name itself, and only list redirects we would accept from registration.
+      if (
+        document?.client_id === url &&
+        uris.length > 0 &&
+        uris.length <= 10 &&
+        uris.every((uri): uri is string => typeof uri === 'string' && uri.length <= 500 && isAllowedRedirect(uri))
+      ) {
+        const name = typeof document.client_name === 'string' && document.client_name.trim() ? document.client_name.trim().slice(0, 60) : new URL(url).host;
+        record = { r: uris, n: name, t: Math.floor(Date.now() / 1000), k: 'cimd' };
+      }
+    } catch {
+      record = null;
+    }
+    if (this.metadataCache.size > 500) this.metadataCache.clear();
+    this.metadataCache.set(url, { record, at: Date.now() });
+    return record;
   }
 
   private async authorize(url: URL): Promise<Response> {

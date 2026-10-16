@@ -2,9 +2,10 @@
 // agent tab groups, connection status) lives in chrome.storage.session so it survives the service
 // worker being suspended but not a browser restart.
 
+import { DEFAULT_RELAY_URL } from './build-config.js';
 import { randomKey } from './crypto.js';
 
-export const DEFAULT_RELAY_URL = 'ws://localhost:8787/extension';
+export { DEFAULT_RELAY_URL };
 const MAX_ACTIVITY = 60;
 const AGENT_COLORS = ['blue', 'cyan', 'green', 'pink', 'yellow', 'red', 'grey'];
 
@@ -39,6 +40,27 @@ export async function getAgents() {
 
 export async function saveAgents(agents) {
   await chrome.storage.local.set({ agents });
+}
+
+/** The relay an agent lives on. Older agents without one follow the relay set in settings. */
+export function agentRelay(agent, settings) {
+  return agent.relayUrl ?? settings.relayUrl;
+}
+
+/** wss://tabs.migma.ai/extension -> https://tabs.migma.ai */
+export function relayOrigin(relayUrl) {
+  try {
+    const url = new URL(relayUrl);
+    url.protocol = url.protocol === 'wss:' ? 'https:' : 'http:';
+    return url.origin;
+  } catch {
+    return '';
+  }
+}
+
+/** The one MCP address AI tools use for this relay. */
+export function mcpUrlFor(relayUrl) {
+  return `${relayOrigin(relayUrl)}/mcp`;
 }
 
 export function nextAgentColor(agents) {

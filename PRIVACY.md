@@ -16,7 +16,7 @@ Tabpass is an open-source Chrome extension and relay, made by Migma ("we", "us")
 Tabpass keeps these in Chrome's storage on your computer. They are not sent to us.
 
 - Your settings: the relay address, this browser's name (for example "Chrome on Mac"), whether agents are paused, and a random key that identifies this browser.
-- The agents you connected: their name, access ("Read" or "Read and act") and their link.
+- The agents you connected: their name, access ("Read" or "Read and act"), their link, and the website that connected it, if one did.
 - The sites you always allow and the sites you block.
 - The last 60 agent calls (time, agent, tool, site, and whether it worked), shown under Activity.
 - If you connect a Migma account: the connection id and secret, and the account's id, email and name, so the panel can show who is connected.
@@ -28,7 +28,7 @@ You can clear the activity list in the side panel. Removing Tabpass deletes all 
 
 **To stay reachable.** While Tabpass is on, it keeps a connection open to the relay set under "This browser" (by default Migma's, `wss://tabs.migma.ai`). Over it, Tabpass sends:
 
-- the random browser key, this browser's name and the Tabpass version;
+- a key that proves this browser to that relay (made from this browser's random key; each relay gets a different one), this browser's name and the Tabpass version;
 - for each agent you connected: its name, its access, and a one-way hash of its link (not the link itself);
 - for a Migma connection: its connection id and secret, which the relay checks with Migma;
 - a short "this browser is in use" signal when you switch to a Chrome window (at most every 30 seconds), so calls go to the browser you are using.
@@ -41,13 +41,13 @@ You can clear the activity list in the side panel. Removing Tabpass deletes all 
 
 Nothing is sent for a site you blocked, declined or did not answer.
 
-**Migma's websites.** Only `migma.ai` and its subdomains can message Tabpass directly. They can ask whether Tabpass is installed, its version, this browser's name, and whether it is connected to Migma (and as which account). They can connect your browser only after you click "Connect to Migma" in Tabpass or confirm in Tabpass's own window.
+**Migma's websites.** Only `migma.ai` and its subdomains can message Tabpass directly. They can ask whether Tabpass is installed, its version, this browser's name, and whether it is connected to Migma (and as which account). They can connect your browser only after you click "Connect" next to Migma in Tabpass or confirm in Tabpass's own window.
 
-**Other websites.** A small script in every page lets a site see that Tabpass is installed and ask to connect. It does not read the page and sends nothing to us. Nothing connects unless you click or confirm in Tabpass.
+**Other websites.** A small script in every page lets a site ask to connect as an AI tool. Tabpass answers a site only right after you click on its page, or if you connected that site before, so sites cannot use it to tell that Tabpass is installed. The script does not read the page and sends nothing to us. A site connects only if you confirm in Tabpass's own window. It then gets a link for its AI, like one you would copy yourself, and the same site approvals apply.
 
 ## Who receives it
 
-- **The agent you connected** (for example Claude, ChatGPT or Cursor). What it does with the data is covered by that service's own privacy policy. Connect only agents you trust.
+- **The agent you connected** (for example Claude, ChatGPT or Cursor, or a website you connected). What it does with the data is covered by that service's own privacy policy. Connect only agents you trust.
 - **Migma**, if you connect your Migma account. Migma's AI then uses your tabs for what you ask it to do, under [Migma's privacy policy](https://migma.ai/privacy).
 - **The relay** you configured. Migma runs the default relay on Cloudflare. It forwards calls and results between your browser and your agents and does not store page content, screenshots or highlighted text. To route calls, it keeps a little connection data: this browser's id and name, the agents connected to it (hashed links and access), when they connected and were last active, and short-lived sign-in codes. Like any web service, our hosting provider handles technical data such as IP addresses to deliver the connection. We do not use it to track you.
 - **Your own relay**, if you set one under "This browser". Then token agents' data goes there, not to Migma. A Migma account connection always uses Migma's relay.

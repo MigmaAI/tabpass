@@ -4,7 +4,8 @@
 // A message every 20s keeps the MV3 service worker alive while connected (Chrome 116+); an alarm
 // reconnects it if Chrome suspended the worker anyway.
 
-import { getAgents, getSettings, setSession } from './store.js';
+import { browserIdFromKey, relayKey } from './crypto.js';
+import { agentRelay, getAgents, getSettings, setSession } from './store.js';
 
 export const PROTOCOL_VERSION = 1;
 const KEEPALIVE_MS = 20_000;
@@ -15,8 +16,12 @@ export function statusKey(relayUrl) {
   return `status:${relayUrl}`;
 }
 
-function agentGrants(agents) {
-  return agents.map(({ tokenHash, label, access }) => ({ tokenHash, label, access }));
+/** Only the agents that live on this relay are announced to it. */
+async function agentGrants(relayUrl) {
+  const [agents, settings] = await Promise.all([getAgents(), getSettings()]);
+  return agents
+    .filter((agent) => agentRelay(agent, settings) === relayUrl)
+    .map(({ tokenHash, label, access }) => ({ tokenHash, label, access }));
 }
 
 export class RelayClient {
@@ -54,7 +59,11 @@ export class RelayClient {
 
     let socket;
     try {
-      socket = new WebSocket(this.relayUrl);
+      // The browser id routes the socket (the Cloudflare relay keeps one object per browser); the
+      // hello still proves it with the key.
+      const url = new URL(this.relayUrl);
+      url.searchParams.set('browser', await browserIdFromKey(await relayKey((await getSettings()).browserKey, this.relayUrl)));
+      socket = new WebSocket(url.href);
     } catch {
       await this.setStatus({ state: 'error', message: 'That relay address is not valid.' });
       return;
@@ -67,10 +76,10 @@ export class RelayClient {
       this.send({
         type: 'hello',
         protocol: PROTOCOL_VERSION,
-        browserKey: settings.browserKey,
+        browserKey: await relayKey(settings.browserKey, this.relayUrl),
         extensionVersion: chrome.runtime.getManifest().version,
         browserName: settings.browserName,
-        agents: this.roles.tokens ? agentGrants(await getAgents()) : [],
+        agents: this.roles.tokens ? await agentGrants(this.relayUrl) : [],
         ...(account ? { account: { connectionId: account.connectionId, secret: account.secret } } : {}),
       });
       clearInterval(this.keepalive);
@@ -129,7 +138,7 @@ export class RelayClient {
 
   /** Tells the relay which agent tokens are valid right now. */
   async syncAgents() {
-    if (this.roles.tokens) this.send({ type: 'agents', agents: agentGrants(await getAgents()) });
+    if (this.roles.tokens) this.send({ type: 'agents', agents: await agentGrants(this.relayUrl) });
   }
 
   /** New roles need a new hello, so reconnect. */

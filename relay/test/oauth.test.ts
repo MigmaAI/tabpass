@@ -255,3 +255,66 @@ describe('OAuth: one URL for every MCP client', () => {
     expect(text).toContain('list_tabs');
   });
 });
+
+describe('OAuth: Client ID Metadata Documents', () => {
+  const CLIENT = 'https://claude.ai/oauth/mcp-oauth-client-metadata';
+  let relay: RelayServer;
+  let base: string;
+  const documents = new Map<string, unknown>([
+    [CLIENT, { client_id: CLIENT, client_name: 'Claude', redirect_uris: ['https://claude.ai/api/mcp/auth_callback'] }],
+    ['https://evil.example.com/meta', { client_id: 'https://someone-else.example.com/meta', redirect_uris: ['https://evil.example.com/cb'] }],
+  ]);
+
+  beforeEach(async () => {
+    relay = createRelayServer({
+      publicUrl: 'http://127.0.0.1',
+      secret: SECRET,
+      fetchClientMetadata: async (url) => {
+        if (!documents.has(url)) throw new Error('404');
+        return documents.get(url);
+      },
+    });
+    const port = await relay.listen(0, '127.0.0.1');
+    base = `http://127.0.0.1:${port}`;
+  });
+
+  afterEach(() => relay.close());
+
+  function authorize(clientId: string, redirect: string): Promise<Response> {
+    const url = new URL(`${base}/authorize`);
+    url.search = new URLSearchParams({
+      response_type: 'code',
+      client_id: clientId,
+      redirect_uri: redirect,
+      code_challenge: pkce().challenge,
+      code_challenge_method: 'S256',
+    }).toString();
+    return fetch(url, { redirect: 'manual' });
+  }
+
+  it('advertises support and accepts a client named by its metadata URL', async () => {
+    const metadata = (await (await fetch(`${base}/.well-known/oauth-authorization-server`)).json()) as Record<string, unknown>;
+    expect(metadata.client_id_metadata_document_supported).toBe(true);
+    const page = await authorize(CLIENT, 'https://claude.ai/api/mcp/auth_callback');
+    expect(page.status).toBe(200);
+    const html = await page.text();
+    expect(html).toContain('Connect Claude to your browser');
+    expect(html).toContain('claude.ai');
+  });
+
+  it('refuses a document that names another client, an unlisted redirect, or an unsafe URL', async () => {
+    expect((await authorize('https://evil.example.com/meta', 'https://evil.example.com/cb')).status).toBe(400);
+    expect((await authorize(CLIENT, 'https://evil.example.com/cb')).status).toBe(400);
+    expect((await authorize('https://unknown.example.com/meta', 'https://claude.ai/api/mcp/auth_callback')).status).toBe(400);
+  });
+});
+
+describe('isMetadataUrl', () => {
+  it('only takes https URLs on real hostnames', async () => {
+    const { isMetadataUrl } = await import('../src/core/oauth.js');
+    expect(isMetadataUrl('https://claude.ai/oauth/meta.json')).toBe(true);
+    for (const bad of ['http://claude.ai/meta', 'https://127.0.0.1/meta', 'https://localhost/meta', 'https://[::1]/meta', 'https://intranet/meta', 'https://claude.ai/', 'https://u:p@claude.ai/meta']) {
+      expect(isMetadataUrl(bad), bad).toBe(false);
+    }
+  });
+});

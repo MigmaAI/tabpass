@@ -12,7 +12,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "rm -rf dist && tsc -p tsconfig.json",
     "dev": "tsx watch src/node/cli.ts",
     "start": "node dist/node/cli.js",
     "typecheck": "tsc -p tsconfig.check.json && tsc -p tsconfig.worker.json",

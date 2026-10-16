@@ -1,20 +1,16 @@
 // Service worker: keeps the relay connections, runs tool calls, and answers the side panel, the
-// prompt windows, and account providers' websites (one-click connect).
+// prompt windows, account providers' websites (one-click connect) and any website speaking the
+// Tabpass Web Protocol (content/bridge.js).
 
-import {
-  cancelConnect,
-  clearOrphanConnectPrompts,
-  handleConnectWindowRemoved,
-  handleExternalMessage,
-  settleConnectPrompt,
-  startConnect,
-} from './lib/account-connect.js';
+import { cancelConnect, handleExternalMessage, startConnect } from './lib/account-connect.js';
 import { Connections } from './lib/connections.js';
-import { createAgentToken } from './lib/crypto.js';
-import { clearOrphanPrompts, handleWindowRemoved, settlePrompt } from './lib/permissions.js';
+import { createAgentToken, relayKey } from './lib/crypto.js';
+import { clearOrphans, handleWindowRemoved, settle } from './lib/prompt-window.js';
 import { PROVIDERS } from './lib/providers.js';
 import { statusKey } from './lib/relay-client.js';
+import { handleWebMessage } from './lib/web-connect.js';
 import {
+  agentRelay,
   clearActivity,
   findAgentByHash,
   getAccounts,
@@ -22,6 +18,7 @@ import {
   getSession,
   getSettings,
   getSites,
+  mcpUrlFor,
   nextAgentColor,
   saveAccounts,
   saveAgents,
@@ -60,10 +57,10 @@ async function onCall(message, client) {
     if (!account) return refusal('This browser is no longer connected to that account.');
     return runTool(accountAgent(account, message.account.via), message.tool, message.args ?? {});
   }
-  // Token agents live only on the relay set under "This browser"; another relay cannot reach them.
+  // A token agent can only be reached through the relay it lives on.
   if (!client.roles.tokens || typeof message.tokenHash !== 'string') return refusal('Unknown agent.');
   const agent = await findAgentByHash(message.tokenHash);
-  if (!agent) return refusal('This agent was removed from Tabpass.');
+  if (!agent || agentRelay(agent, await getSettings()) !== client.relayUrl) return refusal('This agent was removed from Tabpass.');
   return runTool(agent, message.tool, message.args ?? {});
 }
 
@@ -103,10 +100,7 @@ chrome.alarms.create(KEEPALIVE_ALARM, { periodInMinutes: 0.5 });
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === KEEPALIVE_ALARM) connections.ensureConnected();
 });
-chrome.windows.onRemoved.addListener((windowId) => {
-  handleWindowRemoved(windowId);
-  handleConnectWindowRemoved(windowId);
-});
+chrome.windows.onRemoved.addListener(handleWindowRemoved);
 chrome.runtime.onStartup.addListener(() => connections.ensureConnected());
 chrome.runtime.onInstalled.addListener(() => connections.ensureConnected());
 
@@ -118,8 +112,7 @@ chrome.windows.onFocusChanged.addListener((windowId) => {
   connections.broadcast({ type: 'active' });
 });
 
-clearOrphanPrompts();
-clearOrphanConnectPrompts();
+clearOrphans();
 connections.sync();
 
 function cleanSite(value) {
@@ -143,7 +136,12 @@ async function state() {
   return {
     settings: publicSettings,
     status: session[statusKey(settings.relayUrl)] ?? { state: 'connecting' },
-    agents,
+    // The one address every AI tool can use (OAuth); per-agent links are the fallback.
+    mcpUrl: mcpUrlFor(settings.relayUrl),
+    agents: agents.map((agent) => {
+      const relayUrl = agentRelay(agent, settings);
+      return { ...agent, relayUrl, mcpUrl: mcpUrlFor(relayUrl), relay: session[statusKey(relayUrl)] ?? { state: 'connecting' } };
+    }),
     providers: PROVIDERS.map((provider) => {
       const account = accounts.find((candidate) => candidate.provider === provider.id);
       return {
@@ -169,6 +167,7 @@ async function state() {
     sites,
     prompts: session.prompts ?? [],
     connectPrompts: session.connectPrompts ?? [],
+    agentPrompts: session.agentPrompts ?? [],
     activity: local.activity ?? [],
   };
 }
@@ -183,8 +182,8 @@ async function handleUiMessage(message) {
       if (!label) throw new Error('Give the agent a name.');
       const access = message.access === 'control' ? 'control' : 'read';
       const agents = await getAgents();
-      const { browserKey } = await getSettings();
-      const { token, tokenHash } = await createAgentToken(browserKey);
+      const { browserKey, relayUrl } = await getSettings();
+      const { token, tokenHash } = await createAgentToken(await relayKey(browserKey, relayUrl));
       const agent = {
         id: crypto.randomUUID(),
         label,
@@ -194,15 +193,18 @@ async function handleUiMessage(message) {
         color: nextAgentColor(agents),
         createdAt: Date.now(),
         lastUsedAt: null,
+        relayUrl,
+        source: 'manual',
       };
       await saveAgents([...agents, agent]);
       await connections.syncAgents();
-      return agent;
+      return { ...agent, mcpUrl: mcpUrlFor(relayUrl) };
     }
 
     case 'removeAgent': {
       await saveAgents((await getAgents()).filter((agent) => agent.id !== message.id));
       await connections.syncAgents();
+      await connections.sync(); // closes a relay no agent needs any more
       return state();
     }
 
@@ -238,12 +240,17 @@ async function handleUiMessage(message) {
       return state();
     }
 
+    case 'dismissWelcome':
+      await updateSettings({ welcomed: true });
+      return state();
+
     case 'dismissNotice':
       await setNotice(message.provider, null);
       return state();
 
     case 'connectDecision':
-      await settleConnectPrompt(message.id, {
+    case 'agentDecision':
+      await settle(message.id, {
         decision: message.decision === 'connect' ? 'connect' : 'cancel',
         access: message.access === 'control' ? 'control' : 'read',
       });
@@ -299,7 +306,7 @@ async function handleUiMessage(message) {
 
     case 'promptDecision':
       if (!DECISIONS.has(message.decision)) throw new Error('Unknown decision.');
-      await settlePrompt(message.id, message.decision);
+      await settle(message.id, message.decision);
       return state();
 
     case 'clearActivity':
@@ -312,8 +319,14 @@ async function handleUiMessage(message) {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (sender.id !== chrome.runtime.id) return false;
+  // Web pages reach us only through content/bridge.js, and only with the Web Protocol's methods.
+  if (sender.tab && message?.type === 'web') {
+    handleWebMessage(message, sender, connections).then(sendResponse, () => sendResponse({ silent: true }));
+    return true;
+  }
   // Only this extension's own pages (side panel, prompt window) may change settings.
-  if (sender.id !== chrome.runtime.id || !sender.url?.startsWith(chrome.runtime.getURL(''))) return false;
+  if (!sender.url?.startsWith(chrome.runtime.getURL(''))) return false;
   handleUiMessage(message).then(
     (result) => sendResponse({ ok: true, result }),
     (error) => sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) })

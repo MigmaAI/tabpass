@@ -17,6 +17,8 @@ export interface RelayOptions {
   /** Turns on OAuth so every MCP client can use one address. At least 32 characters; keep it stable. */
   secret?: string;
   installUrl?: string;
+  /** Tests only: replaces fetching Client ID Metadata Documents. */
+  fetchClientMetadata?: (url: string) => Promise<unknown>;
   callTimeoutMs?: number;
   rateLimitPerMinute?: number;
   /** Account mode: verifies the provider credentials browsers present (see core/accounts.ts). */
@@ -82,6 +84,7 @@ export function createRelay(options: RelayOptions): Relay {
     directory,
     secret: options.secret,
     installUrl: options.installUrl,
+    fetchClientMetadata: options.fetchClientMetadata,
     internalSecret: options.internalSecret,
     rateLimitPerMinute: options.rateLimitPerMinute,
     log: options.log,

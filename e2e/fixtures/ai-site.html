@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Some AI tool</title>
+  </head>
+  <body>
+    <!-- A third-party website that supports the Tabpass Web Protocol (docs/web-protocol.md). -->
+    <h1>Some AI tool</h1>
+    <button id="connect">Connect your browser</button>
+    <button id="status">Check</button>
+    <button id="disconnect">Disconnect</button>
+    <pre id="silent"></pre>
+    <pre id="result"></pre>
+    <script>
+      function ask(method, params, timeoutMs = 130000) {
+        return new Promise((resolve, reject) => {
+          const id = crypto.randomUUID();
+          const timer = setTimeout(() => { window.removeEventListener('message', onMessage); reject(new Error('no answer')); }, timeoutMs);
+          function onMessage(event) {
+            if (event.source !== window || event.data?.tabpass !== 'response' || event.data.id !== id) return;
+            clearTimeout(timer);
+            window.removeEventListener('message', onMessage);
+            event.data.error ? reject(Object.assign(new Error(event.data.error.message), { code: event.data.error.code })) : resolve(event.data.result);
+          }
+          window.addEventListener('message', onMessage);
+          window.postMessage({ tabpass: 'request', id, method, params }, location.origin);
+        });
+      }
+      const show = (value) => (document.getElementById('result').textContent = JSON.stringify(value));
+      // A silent probe on load, with no click: Tabpass must not answer an unknown site.
+      ask('hello', {}, 1000).then(
+        (result) => (document.getElementById('silent').textContent = 'answered ' + JSON.stringify(result)),
+        () => (document.getElementById('silent').textContent = 'no answer')
+      );
+      document.getElementById('connect').onclick = () => ask('connect', { name: 'Some AI tool', access: 'read' }).then(show, (error) => show({ error: error.code }));
+      document.getElementById('status').onclick = () => ask('status', {}).then(show, (error) => show({ error: error.message }));
+      document.getElementById('disconnect').onclick = () => ask('disconnect', {}).then(show, (error) => show({ error: error.message }));
+    </script>
+  </body>
+</html>

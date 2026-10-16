@@ -64,7 +64,7 @@ These keys can upload and publish **every** item of this publisher. Revoke the O
 
 ## Before each release
 
-1. **Deploy the relay first**, and make sure it still accepts the version of the extension people have now (the relay refuses old extensions with an "update" message, so a breaking protocol change needs a relay that speaks both). Check:
+1. **Deploy the relay first** (`cd relay && yarn deploy:worker`, see the README), and make sure it still accepts the version of the extension people have now (the relay refuses old extensions with an "update" message, so a breaking protocol change needs a relay that speaks both). `RELAY_SECRET` must stay the same across deploys, or every signed-in tool has to sign in again. Check:
    - `curl -sS https://tabs.migma.ai/health` answers.
    - WebSocket upgrades work on `wss://tabs.migma.ai/extension`.
 2. **The store build must default to `wss://tabs.migma.ai/extension`.** `scripts/package.mjs` refuses a build whose default relay is not `wss://`.
@@ -80,12 +80,13 @@ These keys can upload and publish **every** item of this publisher. Revoke the O
    yarn test:e2e    # real Chromium (rebuilds extension/dist as a dev build!)
    ```
    `yarn test:e2e` overwrites `extension/dist` with a dev build, so build the store version again afterwards.
+   If the UI changed, make the store images again (`cd e2e && xvfb-run -a node store-assets.mjs`; it builds its own production copy) and upload the new ones with the release.
 7. **Package:**
    ```bash
    node scripts/package.mjs
    ```
    It checks the build (no "(dev)" name, no localhost in `externally_connectable`, no `key`, versions match, every icon and referenced file present, default relay over `wss://`) and writes `release/tabpass-<version>.zip` with `manifest.json` at the root. It prints the size and SHA-256. `--check` validates without writing.
-8. **Smoke test the zip** in a fresh Chrome profile: unzip, **Load unpacked**, and check that the panel says "Connected", an agent can connect, the site prompt appears, and **Connect to Migma** works.
+8. **Smoke test the zip** in a fresh Chrome profile: unzip, **Load unpacked**, and check that the panel says "Connected", a tool can sign in with `https://tabs.migma.ai/mcp`, the site prompt appears, and **Connect** next to Migma opens Migma's connect page.
 9. **Tag and push:**
    ```bash
    git tag extension-v0.3.0 && git push origin extension-v0.3.0
@@ -106,9 +107,9 @@ The API cannot create an item, so the first upload is by hand.
    | Description | `store/listing.md` > Description |
    | Category, language | `store/listing.md` |
    | Store icon | `extension/public/icons/icon-128.png` |
-   | Screenshots (1–5, 1280x800) | `store/listing.md` > Screenshot plan |
-   | Small promo tile (440x280) | `store/listing.md` > Images |
-   | Marquee (1400x560) | Optional |
+   | Screenshots (1–5, 1280x800) | `store/images/01-home.png` … `05-dark.png`, in that order |
+   | Small promo tile (440x280) | `store/images/promo-small-440x280.png` |
+   | Marquee (1400x560) | Optional: `store/images/promo-marquee-1400x560.png` |
    | Official URL | `migma.ai` (after verification) |
    | Homepage, support URL | `store/listing.md` > URLs |
 
@@ -132,7 +133,7 @@ The API cannot create an item, so the first upload is by hand.
 - Every update is reviewed again. Updates that add permissions take longer.
 - The store can also remove an item later if its behavior stops matching the listing, so keep `store/` and `PRIVACY.md` true.
 
-A smaller footprint would likely shorten review: declaring `<all_urls>` under `optional_host_permissions` and requesting each site when the person clicks "Always allow" or "Allow for 10 min" in Tabpass's prompt (a click in an extension page counts as the user gesture Chrome needs). That changes the approval flow, so it is a product decision, not a release step.
+A smaller footprint would likely shorten review: declaring `<all_urls>` under `optional_host_permissions` and requesting each site when the person clicks "Always allow" or "Allow for 10 minutes" in Tabpass's prompt (a click in an extension page counts as the user gesture Chrome needs). That changes the approval flow, so it is a product decision, not a release step.
 
 ## Updating through CI
 

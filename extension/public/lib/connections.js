@@ -1,9 +1,9 @@
-// Keeps one RelayClient per relay address: the relay set under "This browser" carries the token
-// agents, each connected account (e.g. Migma) brings its own relay, and when both are the same
-// relay they share one socket.
+// Keeps one RelayClient per relay address. Token agents live on the relay set under "This
+// browser" (or the one they were connected through), each connected account (e.g. Migma) brings
+// its own relay, and when they are the same relay they share one socket.
 
 import { RelayClient } from './relay-client.js';
-import { getAccounts, getSettings } from './store.js';
+import { agentRelay, getAccounts, getAgents, getSettings } from './store.js';
 
 function rolesKey(roles) {
   return JSON.stringify({ tokens: roles.tokens, connectionId: roles.account?.connectionId ?? null });
@@ -24,9 +24,15 @@ export class Connections {
   }
 
   async apply() {
-    const [settings, accounts] = await Promise.all([getSettings(), getAccounts()]);
+    const [settings, accounts, agents] = await Promise.all([getSettings(), getAccounts(), getAgents()]);
     const desired = new Map();
+    // The relay in settings is always open (new agents go there); agents on other relays (e.g. one
+    // whose sign-in page connected them) keep theirs open while they exist.
     if (settings.relayUrl) desired.set(settings.relayUrl, { tokens: true, account: null });
+    for (const agent of agents) {
+      const relayUrl = agentRelay(agent, settings);
+      if (relayUrl && !desired.has(relayUrl)) desired.set(relayUrl, { tokens: true, account: null });
+    }
     for (const account of accounts) {
       const roles = desired.get(account.relayUrl) ?? { tokens: false, account: null };
       roles.account = account;

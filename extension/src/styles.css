@@ -3,52 +3,63 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* shadcn/ui zinc theme, the same neutral scale Migma's product uses. */
+/*
+ * Tabpass look: iOS structure (grouped inset lists, large titles, push navigation, sheets) with
+ * Codex's restraint (monochrome actions, quiet chrome, one accent spent on meaning).
+ * The shadcn/ui variable names are kept, so the shadcn primitives (Switch, AlertDialog, Input…)
+ * pick the palette up as they are.
+ */
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.141 0.005 285.823);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.141 0.005 285.823);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.141 0.005 285.823);
-  --primary: oklch(0.21 0.006 285.885);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.967 0.001 286.375);
-  --secondary-foreground: oklch(0.21 0.006 285.885);
-  --muted: oklch(0.967 0.001 286.375);
-  --muted-foreground: oklch(0.552 0.016 285.938);
-  --accent: oklch(0.967 0.001 286.375);
-  --accent-foreground: oklch(0.21 0.006 285.885);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.92 0.004 286.32);
-  --input: oklch(0.92 0.004 286.32);
-  --ring: oklch(0.705 0.015 286.067);
-  --success: oklch(0.627 0.194 149.214);
-  --warning: oklch(0.666 0.179 58.318);
+  --radius: 0.75rem;
+  --background: #f2f2f7; /* iOS grouped background */
+  --foreground: #1c1c1e;
+  --card: #ffffff;
+  --card-foreground: #1c1c1e;
+  --popover: #ffffff;
+  --popover-foreground: #1c1c1e;
+  --primary: #1c1c1e; /* Codex: actions are ink, not color */
+  --primary-foreground: #ffffff;
+  --secondary: rgba(120, 120, 128, 0.12);
+  --secondary-foreground: #1c1c1e;
+  --muted: rgba(120, 120, 128, 0.12);
+  --muted-foreground: rgba(60, 60, 67, 0.62);
+  --accent: rgba(120, 120, 128, 0.12);
+  --accent-foreground: #1c1c1e;
+  --destructive: #ff3b30;
+  --border: rgba(60, 60, 67, 0.16);
+  --input: rgba(60, 60, 67, 0.2);
+  --ring: #0a84ff;
+  --tint: #0a84ff;
+  --success: #34c759;
+  --warning: #ff9f0a;
+  --separator: rgba(60, 60, 67, 0.16);
+  --pressed: rgba(120, 120, 128, 0.16);
 }
 
 .dark {
-  --background: oklch(0.141 0.005 285.823);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.21 0.006 285.885);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.21 0.006 285.885);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.92 0.004 286.32);
-  --primary-foreground: oklch(0.21 0.006 285.885);
-  --secondary: oklch(0.274 0.006 286.033);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.274 0.006 286.033);
-  --muted-foreground: oklch(0.705 0.015 286.067);
-  --accent: oklch(0.274 0.006 286.033);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.552 0.016 285.938);
-  --success: oklch(0.792 0.209 151.711);
-  --warning: oklch(0.828 0.189 84.429);
+  --background: #000000;
+  --foreground: #f5f5f7;
+  --card: #1c1c1e;
+  --card-foreground: #f5f5f7;
+  --popover: #2c2c2e;
+  --popover-foreground: #f5f5f7;
+  --primary: #f5f5f7;
+  --primary-foreground: #111113;
+  --secondary: rgba(118, 118, 128, 0.24);
+  --secondary-foreground: #f5f5f7;
+  --muted: rgba(118, 118, 128, 0.24);
+  --muted-foreground: rgba(235, 235, 245, 0.6);
+  --accent: rgba(118, 118, 128, 0.24);
+  --accent-foreground: #f5f5f7;
+  --destructive: #ff453a;
+  --border: rgba(84, 84, 88, 0.6);
+  --input: rgba(84, 84, 88, 0.7);
+  --ring: #0a84ff;
+  --tint: #0a84ff;
+  --success: #30d158;
+  --warning: #ff9f0a;
+  --separator: rgba(84, 84, 88, 0.6);
+  --pressed: rgba(118, 118, 128, 0.32);
 }
 
 @theme inline {
@@ -70,12 +81,18 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-tint: var(--tint);
   --color-success: var(--success);
   --color-warning: var(--warning);
+  --color-separator: var(--separator);
+  --color-pressed: var(--pressed);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', Inter, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, monospace;
+  --ease-ios: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 @layer base {
@@ -83,13 +100,53 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground antialiased;
-    font-family: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    @apply bg-background font-sans text-foreground antialiased;
+  }
+  button {
+    cursor: pointer;
   }
 }
 
 /* Chrome injects body { font-size: 75% } into extension pages as a page stylesheet, which beats
-   anything inside @layer. shadcn/ui expects the 16px default, so reset it outside the layers. */
+   anything inside @layer. The design expects the 16px default, so reset it outside the layers. */
 html body {
   font-size: 1rem;
+}
+
+/* Push navigation, iOS-style: the new screen slides in from the trailing edge. */
+@keyframes screen-in {
+  from {
+    transform: translateX(32%);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes screen-back {
+  from {
+    transform: translateX(-12%);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+.screen-push {
+  animation: screen-in 320ms var(--ease-ios) both;
+}
+
+.screen-pop {
+  animation: screen-back 280ms var(--ease-ios) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .screen-push,
+  .screen-pop {
+    animation: none;
+  }
 }

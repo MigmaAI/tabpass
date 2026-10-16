@@ -23,6 +23,8 @@ export interface RelayAppOptions {
   secret?: string;
   /** Where the OAuth page sends people without the extension. */
   installUrl?: string;
+  /** Tests only: replaces fetching Client ID Metadata Documents. */
+  fetchClientMetadata?: (url: string) => Promise<unknown>;
   /** Enables /internal for an account provider (sent by it as a Bearer token). */
   internalSecret?: string;
   /** MCP requests allowed per agent per minute (per process). */
@@ -98,7 +100,14 @@ export function createRelayApp(options: RelayAppOptions): RelayApp {
   const limiter = new FixedWindowLimiter(options.rateLimitPerMinute ?? DEFAULT_RATE_LIMIT);
   const oauthReady: Promise<OAuthServer | null> = options.secret
     ? Sealer.fromSecret(options.secret).then(
-        (sealer) => new OAuthServer({ publicUrl, sealer, directory, installUrl: options.installUrl ?? DEFAULT_INSTALL_URL })
+        (sealer) =>
+          new OAuthServer({
+            publicUrl,
+            sealer,
+            directory,
+            installUrl: options.installUrl ?? DEFAULT_INSTALL_URL,
+            fetchClientMetadata: options.fetchClientMetadata,
+          })
       )
     : Promise.resolve(null);
 

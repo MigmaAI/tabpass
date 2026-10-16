@@ -2,6 +2,7 @@
 // site, the user picks Allow for now (10 min, this agent), Always allow this site, Allow all sites,
 // Decline, or Block. Listing tab titles needs no prompt; reading or acting on a page does.
 
+import { ask } from './prompt-window.js';
 import { getSession, getSettings, getSites, saveSites, setSession, siteOf, updateSettings } from './store.js';
 
 export class ToolError extends Error {}
@@ -31,7 +32,6 @@ export async function isBlockedSite(url) {
   return blocked.includes(siteOf(url));
 }
 
-const waiting = new Map(); // promptId -> { resolve, timer, windowId }
 const inFlight = new Map(); // `${agentId}|${site}` -> Promise<decision>
 
 export async function ensureSiteAccess(agent, url) {
@@ -85,69 +85,10 @@ async function applyDecision(decision, key, site) {
   }
 }
 
-async function askUser(agent, site, url) {
-  const id = crypto.randomUUID();
-  const prompts = await getSession('prompts', []);
-  prompts.push({ id, agentLabel: agent.label, access: agent.access, site, url, createdAt: Date.now() });
-  await setSession('prompts', prompts);
-  await updateBadge();
-
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => settlePrompt(id, 'timeout'), PROMPT_TIMEOUT_MS);
-    waiting.set(id, { resolve, timer, windowId: null });
-    chrome.windows
-      .create({
-        url: chrome.runtime.getURL(`prompt.html?id=${encodeURIComponent(id)}`),
-        type: 'popup',
-        width: 420,
-        height: 440,
-        focused: true,
-      })
-      .then((win) => {
-        const entry = waiting.get(id);
-        if (entry) entry.windowId = win.id ?? null;
-        else if (win.id) chrome.windows.remove(win.id).catch(() => undefined);
-      })
-      .catch(() => undefined); // The side panel still lists the request.
-  });
-}
-
-/** Called from the prompt window or side panel. Unknown ids (already settled) are ignored. */
-export async function settlePrompt(id, decision) {
-  const entry = waiting.get(id);
-  waiting.delete(id);
-  const prompts = await getSession('prompts', []);
-  await setSession(
-    'prompts',
-    prompts.filter((prompt) => prompt.id !== id)
+function askUser(agent, site, url) {
+  return ask(
+    'site',
+    { agentLabel: agent.label, access: agent.access, site, url },
+    { timeoutMs: PROMPT_TIMEOUT_MS, timeoutDecision: 'timeout', cancelDecision: 'decline' }
   );
-  await updateBadge();
-  if (!entry) return;
-  clearTimeout(entry.timer);
-  if (entry.windowId) chrome.windows.remove(entry.windowId).catch(() => undefined);
-  entry.resolve(decision);
-}
-
-/** Closing the prompt window without answering declines. */
-export function handleWindowRemoved(windowId) {
-  for (const [id, entry] of waiting) {
-    if (entry.windowId === windowId) {
-      entry.windowId = null;
-      settlePrompt(id, 'decline');
-    }
-  }
-}
-
-/** Prompts are in-memory; after a service-worker restart, stale ones are dropped. */
-export async function clearOrphanPrompts() {
-  const prompts = await getSession('prompts', []);
-  const live = prompts.filter((prompt) => waiting.has(prompt.id));
-  if (live.length !== prompts.length) await setSession('prompts', live);
-  await updateBadge();
-}
-
-async function updateBadge() {
-  const prompts = await getSession('prompts', []);
-  await chrome.action.setBadgeBackgroundColor({ color: '#2563eb' });
-  await chrome.action.setBadgeText({ text: prompts.length ? String(prompts.length) : '' });
 }

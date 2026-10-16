@@ -1,6 +1,6 @@
 // One-click connect with an account provider (Migma). Two ways in, both safe:
 //
-// 1. From Tabpass: the person clicks "Connect to Migma". We open the provider's connect page with
+// 1. From Tabpass: the person clicks "Connect" next to Migma. We open the provider's connect page with
 //    a one-time nonce. The page (signed in) creates a connection and hands it back with that nonce
 //    through chrome.runtime.sendMessage. The nonce proves the person started this here, so no
 //    second confirmation is needed.
@@ -10,6 +10,7 @@
 
 import { randomKey } from './crypto.js';
 import { providerById, providerForOrigin, relayAllowed } from './providers.js';
+import { ask, pending, settle } from './prompt-window.js';
 import { getAccounts, getSession, getSettings, saveAccounts, setNotice, setSession } from './store.js';
 
 const NONCE_TTL_MS = 10 * 60 * 1000;
@@ -17,8 +18,6 @@ const CONFIRM_TIMEOUT_MS = 2 * 60 * 1000;
 const TEXT = /^[^\u0000-\u001f]{1,200}$/;
 const CONNECTION_ID = /^[A-Za-z0-9_-]{8,128}$/;
 const SECRET = /^[A-Za-z0-9_-]{32,256}$/;
-
-const waiting = new Map(); // promptId -> { resolve, timer, windowId }
 
 export async function startConnect(providerId) {
   const provider = providerById(providerId);
@@ -137,60 +136,12 @@ export async function handleExternalMessage(message, sender, connections) {
 // ---------- confirm window (site-initiated connects) ----------
 
 async function askToConnect(provider, account, replaces) {
-  const prompts = await getSession('connectPrompts', []);
-  for (const previous of prompts.filter((prompt) => prompt.provider === provider.id)) {
-    await settleConnectPrompt(previous.id, { decision: 'cancel' }); // newest request wins
+  for (const previous of (await pending('account')).filter((prompt) => prompt.provider === provider.id)) {
+    await settle(previous.id, { decision: 'cancel' }); // newest request wins
   }
-  const id = crypto.randomUUID();
-  const fresh = (await getSession('connectPrompts', [])).filter((prompt) => prompt.provider !== provider.id);
-  fresh.push({ id, provider: provider.id, providerName: provider.name, account, replaces, createdAt: Date.now() });
-  await setSession('connectPrompts', fresh);
-
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => settleConnectPrompt(id, { decision: 'timeout' }), CONFIRM_TIMEOUT_MS);
-    waiting.set(id, { resolve, timer, windowId: null });
-    chrome.windows
-      .create({
-        url: chrome.runtime.getURL(`prompt.html?connect=${encodeURIComponent(id)}`),
-        type: 'popup',
-        width: 420,
-        height: 520,
-        focused: true,
-      })
-      .then((win) => {
-        const entry = waiting.get(id);
-        if (entry) entry.windowId = win.id ?? null;
-        else if (win.id) chrome.windows.remove(win.id).catch(() => undefined);
-      })
-      .catch(() => undefined);
-  });
-}
-
-export async function settleConnectPrompt(id, decision) {
-  const entry = waiting.get(id);
-  waiting.delete(id);
-  const prompts = await getSession('connectPrompts', []);
-  await setSession(
-    'connectPrompts',
-    prompts.filter((prompt) => prompt.id !== id)
+  return ask(
+    'account',
+    { provider: provider.id, providerName: provider.name, account, replaces },
+    { timeoutMs: CONFIRM_TIMEOUT_MS, timeoutDecision: { decision: 'timeout' }, cancelDecision: { decision: 'cancel' } }
   );
-  if (!entry) return;
-  clearTimeout(entry.timer);
-  if (entry.windowId) chrome.windows.remove(entry.windowId).catch(() => undefined);
-  entry.resolve(decision);
-}
-
-export function handleConnectWindowRemoved(windowId) {
-  for (const [id, entry] of waiting) {
-    if (entry.windowId === windowId) {
-      entry.windowId = null;
-      settleConnectPrompt(id, { decision: 'cancel' });
-    }
-  }
-}
-
-export async function clearOrphanConnectPrompts() {
-  const prompts = await getSession('connectPrompts', []);
-  const live = prompts.filter((prompt) => waiting.has(prompt.id));
-  if (live.length !== prompts.length) await setSession('connectPrompts', live);
 }
