@@ -33,7 +33,8 @@ function SitesScreen({ state, onChange }: { state: TabpassState; onChange: () =>
   return (
     <>
       <NavBar title="Sites" back={{ label: backLabel, onClick: pop }} />
-      <div className="grid gap-6 px-4 pt-2 pb-8">
+      <div className="grid gap-6 px-4 pt-4 pb-8">
+        <div className="grid gap-1 px-1"><h2 className="text-[23px] leading-7 font-semibold tracking-[-0.04em]">Set the boundaries.</h2><p className="text-[12px] leading-[17px] text-muted-foreground">Choose where connected tools can work.</p></div>
         <ListSection footer={state.settings.allowAllSites ? 'Agents use any site without asking.' : 'Agents ask you before each new site.'}>
           <ListRow
             title="Allow every site"
@@ -60,7 +61,7 @@ function SitesScreen({ state, onChange }: { state: TabpassState; onChange: () =>
               value={site}
               onChange={(event) => setSite(event.target.value)}
               autoComplete="off"
-              className="h-11 w-full bg-transparent px-4 text-[15px] outline-none placeholder:text-muted-foreground"
+              className="field-surface h-12 w-full rounded-xl px-3 text-[14px] outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/70"
             />
           </ListSection>
           <div className="flex gap-2 px-1">

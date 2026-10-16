@@ -12,7 +12,7 @@ function SitePromptCard({ prompt, onChange }: SitePromptCardProps) {
     send('promptDecision', { id: prompt.id, decision }).then(onChange);
   };
   return (
-    <div role="alert" className="grid gap-3 rounded-xl bg-card p-4 ring-1 ring-tint/40">
+    <div role="alert" className="grid gap-3 border-y border-warning/35 bg-warning/[0.06] px-3 py-4">
       <div className="grid gap-0.5">
         <p className="text-[15px] font-semibold">
           {prompt.agentLabel} wants to use {prompt.site}

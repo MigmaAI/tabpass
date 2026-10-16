@@ -10,14 +10,14 @@ interface IconTileProps {
   className?: string;
 }
 
-/** The rounded-square app tile from iOS Settings, used to recognize each tool at a glance. */
+/** A precise logo tile, optically aligned across genuine and fallback marks. */
 function IconTile({ children, color, size = 'sm', className }: IconTileProps) {
   return (
     <span
       aria-hidden
       className={cn(
-        'inline-flex shrink-0 items-center justify-center font-semibold text-white [&_svg]:size-4',
-        size === 'sm' ? 'size-7 rounded-[7px] text-[11px]' : 'size-14 rounded-[14px] text-lg [&_svg]:size-7',
+        'inline-flex shrink-0 items-center justify-center overflow-hidden font-semibold text-white [&_svg]:size-4',
+        size === 'sm' ? 'size-10 rounded-[12px] text-[12px] [&_svg]:size-[18px]' : 'size-[60px] rounded-[18px] text-lg [&_svg]:size-7',
         className
       )}
       style={{ background: color }}

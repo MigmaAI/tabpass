@@ -221,7 +221,7 @@ try {
 
   console.log('Side panel');
   await step('first run explains what leaves the browser; the relay is set under This browser', async () => {
-    await panel.getByText('You stay in charge').waitFor();
+    await panel.getByRole('note').getByText(/Tabpass shares a page only with AI tools you connect, and only on sites you allow/).waitFor();
     await shoot(panel, 'home-first-run.png');
     await panel.getByRole('button', { name: 'Got it' }).click();
     await panel.getByRole('button', { name: /This browser/ }).click();
@@ -235,6 +235,7 @@ try {
 
   await step('"Connect an AI tool" shows one link for every tool, and one-click buttons', async () => {
     await row('Connect an AI tool').click();
+    await panel.waitForFunction(() => document.activeElement?.tagName === 'H1' && document.activeElement.textContent === 'Connect an AI tool');
     await panel.locator('code', { hasText: `${relayHttp}/mcp` }).first().waitFor();
     await shoot(panel, 'connect.png', { fullPage: true });
     await row('Claude').click();
@@ -242,16 +243,22 @@ try {
     await panel.getByText(/connects from the internet, so it cannot reach a relay on this computer/).waitFor();
     await shoot(panel, 'tool-claude.png', { fullPage: true });
     await back();
+    await panel.waitForFunction(() => document.activeElement?.textContent === 'Connect an AI tool');
   });
 
   await step('a link with a key, for tools without sign-in, starts at Read and can be raised', async () => {
     await row('Make a link with a key').click();
     await panel.getByRole('button', { name: 'Claude', exact: true }).click();
     assert.equal(await panel.getByRole('radio', { name: 'Read', exact: true }).getAttribute('aria-checked'), 'true');
-    await panel.getByRole('radio', { name: 'Read and act' }).click();
+    await panel.getByRole('radio', { name: 'Read', exact: true }).focus();
+    // Radix selects on deferred focus while the physical arrow key remains down.
+    await panel.keyboard.press('ArrowRight', { delay: 50 });
+    await panel.waitForFunction(() => [...document.querySelectorAll('[role="radio"]')].some((radio) => radio.textContent === 'Read and act' && radio.getAttribute('aria-checked') === 'true'));
+    assert.equal(await panel.getByRole('radio', { name: 'Read and act' }).getAttribute('aria-checked'), 'true');
     await panel.getByRole('button', { name: 'Make the link' }).click();
     const code = panel.locator('code').first();
     await code.waitFor();
+    await panel.waitForFunction(() => document.activeElement?.tagName === 'H1' && document.activeElement.textContent === 'Claude');
     controlUrl = await code.textContent();
     assert.match(controlUrl, new RegExp(`^${relayHttp}/mcp/tp_[A-Za-z0-9_-]{16}\\.[A-Za-z0-9_-]{43}$`));
     // The relay sees a key made for it alone, never the browser's own key.
@@ -450,15 +457,30 @@ try {
   });
 
   await step('the panel fits its width in light and dark mode', async () => {
-    assert.equal(await panel.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-    if (screenshotDir) {
-      await panel.emulateMedia({ colorScheme: 'dark' });
-      await shoot(panel, 'home-dark.png', { fullPage: true });
-      await row('Connect an AI tool').click();
-      await shoot(panel, 'connect-dark.png');
-      await back();
-      await panel.emulateMedia({ colorScheme: 'light' });
+    await panel.getByRole('button', { name: /This browser/ }).click();
+    const originalName = await panel.locator('#browser-name').inputValue();
+    await panel.locator('#browser-name').fill('W'.repeat(60));
+    await panel.locator('form', { has: panel.locator('#browser-name') }).getByRole('button', { name: 'Save' }).click();
+    await back();
+    await panel.getByRole('status').getByText(`Connected · ${'W'.repeat(60)}`).waitFor();
+    for (const colorScheme of ['light', 'dark']) {
+      await panel.emulateMedia({ colorScheme, reducedMotion: 'reduce' });
+      for (const width of [320, 380]) {
+        await panel.setViewportSize({ width, height: 860 });
+        assert.equal(await panel.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `Home overflow at ${width}px in ${colorScheme}`);
+        await shoot(panel, `home-${colorScheme}-${width}.png`, { fullPage: true });
+        await row('Connect an AI tool').click();
+        assert.equal(await panel.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `Connect overflow at ${width}px in ${colorScheme}`);
+        await shoot(panel, `connect-${colorScheme}-${width}.png`, { fullPage: true });
+        await back();
+      }
     }
+    await panel.getByRole('button', { name: /This browser/ }).click();
+    await panel.locator('#browser-name').fill(originalName);
+    await panel.locator('form', { has: panel.locator('#browser-name') }).getByRole('button', { name: 'Save' }).click();
+    await back();
+    await panel.setViewportSize({ width: 380, height: 860 });
+    await panel.emulateMedia({ colorScheme: 'light', reducedMotion: 'no-preference' });
   });
 
   await step('the extension reconnects after the relay restarts; sign-ins survive (same secret)', async () => {
@@ -475,6 +497,12 @@ try {
 
   await step('disconnecting an AI tool in the panel cuts its link at once', async () => {
     await row('Claude').click();
+    await panel.getByRole('button', { name: 'Disconnect', exact: true }).click();
+    await panel.getByRole('alertdialog').waitFor();
+    await panel.keyboard.press('Escape');
+    await panel.getByRole('alertdialog').waitFor({ state: 'detached' });
+    await panel.waitForFunction(() => document.activeElement?.textContent === 'Disconnect');
+    assert.ok(!(await control.callTool({ name: 'list_tabs', arguments: {} })).isError, 'Escape must preserve the connected tool');
     await panel.getByRole('button', { name: 'Disconnect', exact: true }).click();
     await panel.getByRole('alertdialog').getByRole('button', { name: 'Disconnect' }).click();
     await row('Claude').waitFor({ state: 'detached' });

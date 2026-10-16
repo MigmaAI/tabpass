@@ -5,7 +5,7 @@ import { ACCESS_HINT, ACCESS_LABEL } from '@/lib/format';
 /** Read or Read and act, with what the choice allows. Read is the default everywhere. */
 function AccessChoice({ value, onChange }: { value: Access; onChange: (access: Access) => void }) {
   return (
-    <div className="grid gap-2 rounded-xl bg-card p-2">
+    <div className="grid gap-2">
       <Segmented<Access>
         label="Access"
         value={value}

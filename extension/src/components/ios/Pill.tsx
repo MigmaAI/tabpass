@@ -8,9 +8,9 @@ interface PillProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const VARIANTS = {
-  primary: 'bg-primary text-primary-foreground hover:opacity-90',
+  primary: 'bg-primary text-primary-foreground hover:bg-primary/90',
   secondary: 'bg-secondary text-foreground hover:bg-pressed',
-  plain: 'bg-transparent text-tint hover:bg-secondary',
+  plain: 'bg-transparent text-tint hover:bg-accent/55',
   destructive: 'bg-transparent text-destructive hover:bg-secondary',
 };
 
@@ -20,9 +20,9 @@ function Pill({ variant = 'primary', size = 'lg', className, type = 'button', ..
     <button
       type={type}
       className={cn(
-        'inline-flex shrink-0 items-center justify-center gap-1.5 rounded-full font-semibold whitespace-nowrap transition outline-none',
+        'inline-flex shrink-0 items-center justify-center gap-1.5 rounded-[11px] font-semibold whitespace-nowrap transition-[transform,background-color,box-shadow] duration-200 outline-none',
         'focus-visible:ring-[3px] focus-visible:ring-ring/60 disabled:pointer-events-none disabled:opacity-40 [&_svg]:size-4',
-        size === 'lg' ? 'h-11 px-5 text-[15px]' : 'h-[30px] px-3.5 text-[13px]',
+        size === 'lg' ? 'min-h-11 px-5 text-[14px]' : 'min-h-9 px-3 text-[12px]',
         VARIANTS[variant],
         className
       )}
