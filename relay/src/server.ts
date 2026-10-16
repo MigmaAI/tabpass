@@ -1,11 +1,15 @@
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { Duplex } from 'node:stream';
 
 import { WebSocketServer } from 'ws';
 
+import { runAccountTool } from './account-tools.js';
+import type { AccountVerifier } from './accounts.js';
 import { BrowserHub } from './browser-hub.js';
-import { serveMcpRequest } from './mcp-handler.js';
+import { createBrowserMcpServer, serveMcp } from './mcp-handler.js';
 import { parseAgentToken, redactToken, type ParsedAgentToken } from './tokens.js';
+import { accountTools, parseToolArgs } from './tools.js';
 
 export interface RelayOptions {
   /** Origin agents and the extension use to reach this relay, e.g. https://tabs.example.com */
@@ -13,6 +17,14 @@ export interface RelayOptions {
   callTimeoutMs?: number;
   /** MCP requests allowed per agent per minute. */
   rateLimitPerMinute?: number;
+  /** Account mode: verifies the provider credentials browsers present (see accounts.ts). */
+  accounts?: AccountVerifier;
+  reverifyMs?: number;
+  /**
+   * Enables the provider's server-to-server API under /internal (call a tool for a person, list
+   * their browsers, revoke a connection). Sent by the provider as a Bearer token.
+   */
+  internalSecret?: string;
   log?: (message: string) => void;
 }
 
@@ -29,7 +41,9 @@ const MAX_BODY_BYTES = 1_000_000;
 const MAX_WS_PAYLOAD_BYTES = 32 * 1024 * 1024;
 const EXTENSION_PATH = '/extension';
 const MCP_PATH = '/mcp';
+const INTERNAL_PATH = '/internal';
 const DEFAULT_RATE_LIMIT = 300;
+const ACCOUNT_TOOLS = new Map(accountTools().map((tool) => [tool.name, tool]));
 
 const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -71,6 +85,12 @@ function jsonRpcError(res: ServerResponse, status: number, message: string, head
   sendJson(res, status, { jsonrpc: '2.0', error: { code: -32001, message }, id: null }, headers);
 }
 
+function sameSecret(given: string, expected: string): boolean {
+  const a = createHash('sha256').update(given).digest();
+  const b = createHash('sha256').update(expected).digest();
+  return timingSafeEqual(a, b);
+}
+
 function readJsonBody(req: IncomingMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
@@ -106,15 +126,21 @@ function extractToken(req: IncomingMessage, pathname: string): ParsedAgentToken 
 export function createRelay(options: RelayOptions): Relay {
   const log = options.log ?? ((): void => undefined);
   const publicUrl = options.publicUrl.replace(/\/+$/, '');
-  const hub = new BrowserHub({ mcpUrl: `${publicUrl}${MCP_PATH}`, callTimeoutMs: options.callTimeoutMs, log });
+  const hub = new BrowserHub({
+    mcpUrl: `${publicUrl}${MCP_PATH}`,
+    callTimeoutMs: options.callTimeoutMs,
+    accounts: options.accounts,
+    reverifyMs: options.reverifyMs,
+    log,
+  });
   const limiter = new FixedWindowLimiter(options.rateLimitPerMinute ?? DEFAULT_RATE_LIMIT);
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_WS_PAYLOAD_BYTES });
 
   async function handleMcp(req: IncomingMessage, res: ServerResponse, pathname: string): Promise<void> {
     const token = extractToken(req, pathname);
     if (!token) {
-      jsonRpcError(res, 401, 'Missing or malformed token. Copy the connection details from the Migma Tabs side panel.', {
-        'WWW-Authenticate': 'Bearer realm="migma-tabs"',
+      jsonRpcError(res, 401, 'Missing or malformed token. Copy the connection details from the Tabpass side panel.', {
+        'WWW-Authenticate': 'Bearer realm="tabpass"',
       });
       return;
     }
@@ -122,7 +148,7 @@ export function createRelay(options: RelayOptions): Relay {
     const lookup = hub.lookupAgent(token);
     if (lookup.status === 'invalid') {
       jsonRpcError(res, 401, 'This token is not connected to the browser. It may have been removed.', {
-        'WWW-Authenticate': 'Bearer realm="migma-tabs", error="invalid_token"',
+        'WWW-Authenticate': 'Bearer realm="tabpass", error="invalid_token"',
       });
       return;
     }
@@ -148,7 +174,46 @@ export function createRelay(options: RelayOptions): Relay {
     // While the browser is offline the relay cannot see the agent's access level, so it lists every
     // tool and each call answers "browser offline".
     const access = lookup.status === 'ok' ? lookup.agent.access : null;
-    await serveMcpRequest(req, res, body, hub, token, access);
+    await serveMcp(req, res, body, createBrowserMcpServer(hub, token, access));
+  }
+
+  /** Provider-to-relay API. Not for agents: it acts for any person the provider names. */
+  async function handleInternal(req: IncomingMessage, res: ServerResponse, pathname: string): Promise<void> {
+    const header = req.headers.authorization ?? '';
+    if (!options.internalSecret || !header.toLowerCase().startsWith('bearer ') || !sameSecret(header.slice(7), options.internalSecret)) {
+      sendJson(res, 404, { error: 'Not found' });
+      return;
+    }
+    const parts = pathname.slice(INTERNAL_PATH.length + 1).split('/').map(decodeURIComponent);
+
+    // GET /internal/accounts/:accountId/browsers
+    if (req.method === 'GET' && parts.length === 3 && parts[0] === 'accounts' && parts[2] === 'browsers') {
+      sendJson(res, 200, { browsers: hub.accountBrowsers(parts[1]!) });
+      return;
+    }
+    // POST /internal/accounts/:accountId/call  { tool, args, via? }
+    if (req.method === 'POST' && parts.length === 3 && parts[0] === 'accounts' && parts[2] === 'call') {
+      const body = (await readJsonBody(req)) as { tool?: unknown; args?: unknown; via?: unknown } | undefined;
+      const tool = typeof body?.tool === 'string' ? ACCOUNT_TOOLS.get(body.tool) : undefined;
+      if (!tool) {
+        sendJson(res, 400, { error: 'Unknown tool' });
+        return;
+      }
+      const parsed = parseToolArgs(tool, body?.args);
+      if (!parsed.ok) {
+        sendJson(res, 400, { error: parsed.error });
+        return;
+      }
+      const via = typeof body?.via === 'string' ? body.via : undefined;
+      sendJson(res, 200, await runAccountTool(hub, parts[1]!, tool.name, parsed.args, via ? { via } : {}));
+      return;
+    }
+    // POST /internal/connections/:connectionId/revoke
+    if (req.method === 'POST' && parts.length === 3 && parts[0] === 'connections' && parts[2] === 'revoke') {
+      sendJson(res, 200, { revoked: hub.revokeConnection(parts[1]!) });
+      return;
+    }
+    sendJson(res, 404, { error: 'Not found' });
   }
 
   function handleHttp(req: IncomingMessage, res: ServerResponse): void {
@@ -168,6 +233,13 @@ export function createRelay(options: RelayOptions): Relay {
       sendJson(res, 200, { ok: true, ...hub.stats() });
       return;
     }
+    if (pathname.startsWith(`${INTERNAL_PATH}/`)) {
+      handleInternal(req, res, pathname).catch((error: unknown) => {
+        log(`internal error: ${error instanceof Error ? error.message : String(error)}`);
+        if (!res.headersSent) sendJson(res, 400, { error: 'Bad request' });
+      });
+      return;
+    }
     if (pathname === MCP_PATH || pathname.startsWith(`${MCP_PATH}/`)) {
       handleMcp(req, res, pathname).catch((error: unknown) => {
         log(`mcp error: ${error instanceof Error ? error.message : String(error)}`);
@@ -178,7 +250,7 @@ export function createRelay(options: RelayOptions): Relay {
     if (pathname === '/') {
       res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
       res.end(
-        `Migma Tabs relay\n\nAgents connect to ${publicUrl}${MCP_PATH} with the token from the extension's side panel.\n`
+        `Tabpass relay\n\nAgents connect to ${publicUrl}${MCP_PATH} with the token from the extension's side panel.\n`
       );
       return;
     }

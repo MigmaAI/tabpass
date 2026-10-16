@@ -6,13 +6,13 @@ import { createHash, timingSafeEqual } from 'node:crypto';
  *   browserKey  32 random bytes, base64url. Never leaves the extension except in the `hello` frame.
  *   browserId   first 16 chars of base64url(sha256(browserKey)). Only the holder of the key can
  *               register as that browser, so a stolen agent token cannot be used to impersonate it.
- *   agent token `mtb_<browserId>.<secret>`. The extension registers sha256(secret) for each agent;
+ *   agent token `tp_<browserId>.<secret>`. The extension registers sha256(secret) for each agent;
  *               the relay routes by browserId and checks the hash against that live connection.
  */
 
-export const TOKEN_PREFIX = 'mtb_';
+export const TOKEN_PREFIX = 'tp_';
 const BROWSER_ID_LENGTH = 16;
-const TOKEN_PATTERN = /^mtb_([A-Za-z0-9_-]{16})\.([A-Za-z0-9_-]{43})$/;
+const TOKEN_PATTERN = /^tp_([A-Za-z0-9_-]{16})\.([A-Za-z0-9_-]{43})$/;
 
 function base64url(buffer: Buffer): string {
   return buffer.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -43,7 +43,7 @@ export function hashesEqual(a: string, b: string): boolean {
   return left.length === right.length && timingSafeEqual(left, right);
 }
 
-/** Keeps tokens out of logs: `mtb_AbCd…` */
+/** Keeps tokens out of logs: `tp_AbCd…` */
 export function redactToken(value: string): string {
-  return value.replace(/mtb_[A-Za-z0-9_-]{4}[A-Za-z0-9_.-]*/g, (token) => `${token.slice(0, 8)}…`);
+  return value.replace(/tp_[A-Za-z0-9_-]{4}[A-Za-z0-9_.-]*/g, (token) => `${token.slice(0, 7)}…`);
 }

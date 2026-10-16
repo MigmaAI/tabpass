@@ -1,7 +1,7 @@
 /**
- * Wire protocol between the relay and the Migma Tabs extension (one WebSocket per browser).
- * The extension mirrors these shapes in `extension/lib/relay-client.js`; bump PROTOCOL_VERSION
- * on any breaking change to either side.
+ * Wire protocol between the relay and the Tabpass extension (one WebSocket per browser and relay).
+ * The extension mirrors these shapes in `extension/public/lib/relay-client.js`; bump
+ * PROTOCOL_VERSION on any breaking change to either side.
  */
 
 export const PROTOCOL_VERSION = 1;
@@ -14,6 +14,19 @@ export interface AgentGrant {
   label: string;
   access: AgentAccess;
 }
+
+/** Proof that this browser is connected to a person's account at a provider such as Migma. */
+export interface AccountCredential {
+  connectionId: string;
+  secret: string;
+}
+
+/**
+ * ok: verified. invalid: the provider does not know this connection (revoked or deleted).
+ * unavailable: the provider could not be asked; keep the credential and retry.
+ * unsupported: this relay has no account provider configured.
+ */
+export type AccountStatus = 'ok' | 'invalid' | 'unavailable' | 'unsupported';
 
 export interface TextContent {
   type: 'text';
@@ -39,7 +52,10 @@ export interface HelloMessage {
   protocol: number;
   browserKey: string;
   extensionVersion: string;
+  /** Shown to agents when a person has several browsers, e.g. "Chrome on Mac". */
+  browserName: string;
   agents: AgentGrant[];
+  account?: AccountCredential;
 }
 
 export interface AgentsMessage {
@@ -57,21 +73,36 @@ export interface PingMessage {
   type: 'ping';
 }
 
-export type ExtensionMessage = HelloMessage | AgentsMessage | ResultMessage | PingMessage;
+/** The user focused this browser; account calls go to the most recently active browser. */
+export interface ActiveMessage {
+  type: 'active';
+}
+
+export type ExtensionMessage = HelloMessage | AgentsMessage | ResultMessage | PingMessage | ActiveMessage;
 
 // Relay -> extension
 export interface WelcomeMessage {
   type: 'welcome';
   browserId: string;
   mcpUrl: string;
+  account?: { status: AccountStatus; name?: string };
 }
 
 export interface CallMessage {
   type: 'call';
   id: string;
-  tokenHash: string;
   tool: string;
   args: Record<string, unknown>;
+  /** Set for calls from a token agent. */
+  tokenHash?: string;
+  /** Set for calls made through the browser's account (e.g. Migma). `via` names the client, if known. */
+  account?: { via?: string };
+}
+
+export interface AccountUpdateMessage {
+  type: 'account';
+  status: AccountStatus;
+  name?: string;
 }
 
 export interface PongMessage {
@@ -83,11 +114,18 @@ export interface RelayErrorMessage {
   message: string;
 }
 
-export type RelayMessage = WelcomeMessage | CallMessage | PongMessage | RelayErrorMessage;
+export type RelayMessage =
+  | WelcomeMessage
+  | CallMessage
+  | AccountUpdateMessage
+  | PongMessage
+  | RelayErrorMessage;
 
 const MAX_LABEL_LENGTH = 60;
 const HASH_PATTERN = /^[0-9a-f]{64}$/;
 const BROWSER_KEY_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+const CONNECTION_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
+const SECRET_PATTERN = /^[A-Za-z0-9_-]{32,256}$/;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -105,6 +143,15 @@ function parseAgents(value: unknown): AgentGrant[] | null {
     agents.push({ tokenHash, label: label.slice(0, MAX_LABEL_LENGTH), access });
   }
   return agents;
+}
+
+function parseAccount(value: unknown): AccountCredential | null | undefined {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) return null;
+  const { connectionId, secret } = value;
+  if (typeof connectionId !== 'string' || !CONNECTION_ID_PATTERN.test(connectionId)) return null;
+  if (typeof secret !== 'string' || !SECRET_PATTERN.test(secret)) return null;
+  return { connectionId, secret };
 }
 
 function parseContent(value: unknown): ToolContent[] | null {
@@ -141,21 +188,27 @@ export function parseExtensionMessage(raw: string): ExtensionMessage | null {
   switch (data.type) {
     case 'hello': {
       const agents = parseAgents(data.agents);
+      const account = parseAccount(data.account);
       if (
         typeof data.protocol !== 'number' ||
         typeof data.browserKey !== 'string' ||
         !BROWSER_KEY_PATTERN.test(data.browserKey) ||
         typeof data.extensionVersion !== 'string' ||
-        !agents
+        !agents ||
+        account === null
       ) {
         return null;
       }
+      const browserName =
+        typeof data.browserName === 'string' && data.browserName.trim() ? data.browserName.trim().slice(0, MAX_LABEL_LENGTH) : 'Chrome';
       return {
         type: 'hello',
         protocol: data.protocol,
         browserKey: data.browserKey,
         extensionVersion: data.extensionVersion.slice(0, 32),
+        browserName,
         agents,
+        ...(account ? { account } : {}),
       };
     }
     case 'agents': {
@@ -174,6 +227,8 @@ export function parseExtensionMessage(raw: string): ExtensionMessage | null {
     }
     case 'ping':
       return { type: 'ping' };
+    case 'active':
+      return { type: 'active' };
     default:
       return null;
   }

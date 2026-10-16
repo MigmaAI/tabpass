@@ -1,37 +1,30 @@
-# Migma Tabs
+# Tabpass
 
-Let any AI agent read and use your open Chrome tabs over MCP, from anywhere. You approve each new site.
+**Give any AI agent a pass to your browser.** Tabpass lets Claude, ChatGPT, Cursor, Claude Code, Migma or any MCP client read and use your open Chrome tabs, from anywhere, and you approve each new site.
 
-Built on the same structure as OpenAI's ChatGPT Chrome extension (side panel, per-site approval, agent tab groups, read vs act), but the browser is reached through a **remote MCP server** instead of being locked to one assistant. Claude, ChatGPT connectors, Cursor, Claude Code and, later, Migma's own design agent can all connect.
+Open source (MIT), by the [Migma](https://migma.ai) team.
+
+It follows the structure of OpenAI's ChatGPT Chrome extension: a side panel, per-site approval, a tab group per agent, and read vs act. The difference is that the browser is reached through a **remote MCP server**, so it is not locked to one assistant.
 
 ```
- AI agent (Claude, ChatGPT, Cursor, Claude Code, Migma)
-    │  MCP over HTTPS: POST /mcp  (Bearer token, or /mcp/<token> for URL-only connector UIs)
-    ▼
- relay/            stateless Node server, no database
-    │  WebSocket the browser opens outward (works behind NAT and firewalls)
-    ▼
- extension/        Chrome MV3 extension
-    ├─ background.js           relay connection, tool dispatch, side-panel API
-    ├─ lib/permissions.js      per-site, per-agent approval (prompt window)
-    ├─ lib/tools.js            the 15 tools, on chrome.tabs / tabGroups / scripting
-    └─ content/page-agent.js   injected into the tab's isolated world: text, refs, click, type, design
+ AI agents ─── MCP over HTTPS ──┐         Account providers (Migma) ─── server-to-server ──┐
+ (token link per agent)         ▼                                                          ▼
+                      relay/   stateless Node server: /mcp, /extension, /internal
+                                 │  WebSocket the browser opens outward (works behind NAT)
+                                 ▼
+                      extension/   Chrome MV3: side panel (shadcn/ui), site approval, 15 tools
 ```
 
-## Compared with ChatGPT's extension
+## Two ways to connect
 
-| | ChatGPT for Chrome | Migma Tabs |
+| | Token agents | Account (one click) |
 |---|---|---|
-| Who can use it | ChatGPT / Codex only | Any MCP client |
-| Transport | ChatGPT sidebar, native messaging to the Codex app | Outbound WebSocket to a relay; agents use remote MCP |
-| Side panel | Chat and history | Agents, activity, sites, relay |
-| Site approval | Allow once / this site / all sites / decline, plus allow and block lists | Allow for 10 min / always / every site / decline / block, per agent |
-| Agent tabs | Own tab group per task | Own tab group per agent |
-| Read tabs, highlighted text, screenshots | Yes | Yes, plus `extract_design` for colors, fonts, buttons and logo |
-| Act (click, type, forms) | Work mode | Agents with "Read and act" |
-| Input method | Chrome debugger (CDP) | DOM events, no debugger permission (see limits) |
+| For | Any MCP client: Claude, ChatGPT, Cursor, Claude Code, your own | Services people sign in to; Migma is built in |
+| Setup | **Connect an agent** in the side panel, then paste its link | **Connect to Migma** in the side panel. That's it. |
+| Who it acts as | The agent's own name and access | The provider's name ("Migma") and the access the person chose |
+| Revoke | Disconnect in the side panel | Disconnect in the side panel, or in the provider's settings |
 
-The ChatGPT package itself could not be downloaded from this build environment (the Chrome Web Store is blocked here), so the comparison comes from OpenAI's docs and press coverage, not from its source.
+Account mode is designed for teams: a browser binds to one **person**, never to an org, so teammates, admins and org-wide keys can never reach someone else's browser. See [docs/migma-integration.md](docs/migma-integration.md) for Migma's side and every edge case, and [docs/accounts.md](docs/accounts.md) to add another provider.
 
 ## Tools
 
@@ -39,77 +32,93 @@ The ChatGPT package itself could not be downloaded from this build environment (
 |---|---|---|
 | `list_tabs` | read | Tabs in every window: id, title, URL, active, groups. Blocked sites are hidden. No prompt. |
 | `read_page` | read | Clean text (headings, lists, links, tables). `interactive=true` adds buttons and fields with refs. Google Docs and Sheets are read through their export. |
-| `get_selection` | read | The text the user highlighted. |
+| `get_selection` | read | The text the person highlighted. |
 | `screenshot` | read | Visible part of a tab as JPEG or PNG. |
 | `extract_design` | read | Palette with roles, fonts, type scale, button styles, radii, content width, logo, key images. |
 | `wait_for` | read | Wait for a load, or for text to appear. |
 | `open_tab`, `navigate`, `activate_tab`, `close_tabs`, `group_tabs` | act | Tab management. Opened tabs go into the agent's own group. |
-| `click`, `type`, `press_key`, `scroll` | act | Act on the page by ref, CSS selector, or visible text. |
+| `click`, `type`, `press_key`, `scroll` | act | Act by ref, CSS selector, or visible text. |
+| `list_browsers` | account | A person's connected browsers. Other tools take `browser` to pick one; the default is the one used last. |
 
 Every page result starts with a line marking the content as untrusted, and the server instructions tell agents never to follow instructions found in pages.
+
+## Repository
+
+```
+relay/        TypeScript relay: hub, MCP handler, account mode, internal API (vitest)
+extension/    public/  service worker, tools, page agent, manifest (plain JS, copied as is)
+              src/     side panel and prompt windows: React + Tailwind v4 + stock shadcn/ui
+e2e/          real-Chromium end-to-end run with a fake Migma
+docs/         accounts.md, migma-integration.md
+```
+
+The UI uses unmodified [shadcn/ui](https://ui.shadcn.com) components (`extension/src/components/ui`) on the zinc theme, the same neutral scale as Migma's product, in light and dark mode.
 
 ## Run it locally
 
 ```bash
-cd relay && yarn && yarn build && yarn start      # relay on http://localhost:8787
+yarn setup                                  # installs relay, extension and e2e
+yarn --cwd relay build && yarn --cwd relay start      # relay on http://localhost:8787
+yarn --cwd extension build                  # builds extension/dist
 ```
 
-1. Open `chrome://extensions`, turn on Developer mode, click **Load unpacked**, pick `extension/`.
-2. Click the toolbar icon. The side panel opens and connects to `ws://localhost:8787/extension` (change it under **Relay**).
-3. **Connect an agent**: name it, choose **Read** or **Read and act**, then copy its details.
-4. Give them to the agent:
-   - Claude Code: `claude mcp add --transport http migma-tabs http://localhost:8787/mcp --header "Authorization: Bearer mtb_…"`
-   - Cursor and other config-file clients: the **MCP config** snippet in the side panel.
-   - Claude.ai, ChatGPT and other URL-only connector screens: paste the **Connector URL**. These agents run in the cloud, so they need a relay with a public HTTPS address (below), not localhost.
+1. Open `chrome://extensions`, turn on Developer mode, **Load unpacked**, and pick `extension/dist`.
+2. Click the toolbar icon. The side panel connects to `ws://localhost:8787/extension` (change it under **This browser**).
+3. **Connect an agent**, name it, choose **Read** or **Read and act**, and copy its details into the agent:
+   - Claude Code: `claude mcp add --transport http tabpass http://localhost:8787/mcp --header "Authorization: Bearer tp_…"`
+   - Config-file clients (Cursor and others): the **MCP config** snippet.
+   - URL-only connector screens (Claude.ai, ChatGPT): the **Connector URL**. These agents run in the cloud, so they need a relay with a public HTTPS address.
+
+`yarn --cwd extension watch` rebuilds on change; `build:dev` makes a test build that also trusts a local fake Migma.
 
 ## Deploy the relay
 
 ```bash
-cd relay
-docker build -t migma-tabs-relay .
-docker run -p 8787:8787 -e PUBLIC_URL=https://tabs.example.com migma-tabs-relay
+docker build -t tabpass-relay relay
+docker run -p 8787:8787 -e PUBLIC_URL=https://tabs.example.com tabpass-relay
 ```
 
 | Variable | Default | |
 |---|---|---|
 | `PORT` | `8787` | |
 | `HOST` | `127.0.0.1` (`0.0.0.0` in Docker) | |
-| `PUBLIC_URL` | `http://localhost:$PORT` | The address agents use; sent to the extension so the side panel shows correct connection details. |
-| `RATE_LIMIT_PER_MINUTE` | `300` | MCP requests per agent per minute. |
+| `PUBLIC_URL` | `http://localhost:$PORT` | The address agents use; sent to the extension so the panel shows correct links. |
+| `RATE_LIMIT_PER_MINUTE` | `300` | MCP requests per token agent per minute. |
+| `ACCOUNTS_VERIFY_URL`, `ACCOUNTS_VERIFY_SECRET` | off | Account mode: where the relay verifies browser connections. |
+| `INTERNAL_SECRET` | off | Turns on `/internal` for the account provider's servers. |
 
-Put it behind TLS with WebSocket upgrades allowed on `/extension`, then set the extension's relay to `wss://tabs.example.com/extension`. Routing is in memory, so run **one instance** (or add sticky routing / Redis pub-sub keyed by browser id before scaling out). `GET /health` reports connected browsers.
-
-The relay is also a library: `createRelay()` returns `handleHttp` and `handleUpgrade`, so it can be mounted in an existing Node or Express server.
+Put it behind TLS with WebSocket upgrades on `/extension`. Routing is in memory, so run **one instance** (shard by browser id before scaling out). `GET /health` reports browsers, accounts and pending calls. The relay is also a library: `createRelay()` returns `handleHttp` and `handleUpgrade`, and `registerBrowserTools()` adds the tools to any MCP server.
 
 ## Security model
 
-- **No accounts, no database.** On install the extension makes a random `browserKey`. Its browser id is a hash of that key, so only that browser can register under it. Each agent token is `mtb_<browserId>.<secret>`; the relay only ever receives `sha256(secret)` from the browser, and only while the browser is online.
-- **Revoking is instant.** Disconnecting an agent in the side panel removes its hash from the relay right away; its next request gets 401.
-- **Per-site approval, per agent.** Listing tab titles needs no prompt; reading or acting on a site does. "Allow for 10 min" covers one agent; "Always allow", "Block" and "Allow every site" cover all agents. Blocked sites are hidden from `list_tabs`.
-- **Read vs act.** Read-only agents do not even see the act tools. A pause switch stops every agent.
-- **Visible.** A blue frame and a "Claude is using this tab" label show while an agent acts, opened tabs sit in the agent's group, and the activity list records every call, including failures.
-- **Isolated.** The page agent runs in the extension's isolated world; pages cannot see or call it, and element refs are not written into the DOM. Only the extension's own pages can change settings.
-- **Treat the Connector URL like a password**: the token is in the path. Prefer the header form when a client supports it.
-- **The relay sees page content in transit.** Self-host it, or let Migma host it; end-to-end encryption between agent and browser is a possible later step.
+- **No database on the relay.** The extension makes a random `browserKey` on install; its browser id is a hash of that key, so only that browser can register under it. A token agent's link is `tp_<browserId>.<secret>`, and the relay only ever sees `sha256(secret)`.
+- **One-click connect cannot be forced.** A provider's page can connect a browser only with the nonce from the person's own click in Tabpass, or after they confirm in Tabpass's own window. A provider can only point the browser at its own `wss://` relay.
+- **Per-site approval, per agent.** Listing tab titles needs no prompt; reading or acting on a site does. Blocked sites are hidden from `list_tabs`. Read-only agents do not even see the act tools, and a switch in the header pauses every agent.
+- **Revoking is instant**: a disconnected agent's next request gets 401, and a revoked account is cut off immediately (or within 10 minutes through re-verify).
+- **Outages never disconnect people**: a provider outage or a wrong relay secret counts as "unavailable", never as "revoked".
+- **Visible**: while an agent acts, a blue frame and a "Claude is using this tab" label show on the page, and the activity list records every call, including failures.
+- **Isolated**: the page agent runs in the extension's isolated world; pages cannot see or call it, and element refs are never written into the DOM.
+- **Treat a Connector URL like a password.** The relay sees page content in transit, so self-host it or use your provider's.
 
 ## Known limits
 
-- Clicks and keys are DOM events, not real input. Pages get no user activation, so `window.open` popups, some clipboard and file-picker flows, and sites that check `event.isTrusted` will not respond. Back and forward use the page's own `history.back()` because Chrome's back button skips entries created without a gesture. An optional Chrome debugger mode would fix this, at the cost of Chrome's "is debugging this browser" bar.
-- Top frame only: iframes and closed shadow roots are not read. Canvas apps (Figma, Google Docs' editor surface) have no DOM text; Google Docs and Sheets go through their export endpoints instead. **Those readers are not yet tested against real Google accounts.**
-- Word Online is read through its DOM like any page. Local `.docx` files and PDFs in Chrome's viewer are not supported yet.
+- Clicks and keys are DOM events, not real input, so pages get no user activation. `window.open` popups, some clipboard and file-picker flows, and sites that check `event.isTrusted` will not respond. An optional Chrome debugger mode would fix this, at the cost of Chrome's "debugging this browser" bar.
+- Top frame only: no iframes or closed shadow roots. Canvas apps have no DOM text. The Google Docs and Sheets readers use their export endpoints and **are not yet tested against real Google accounts**.
+- Local `.docx` files and PDFs in Chrome's viewer are not supported yet.
 
 ## Tests
 
 ```bash
-cd relay && yarn test            # 16 relay tests: routing, auth, read-only agents, offline, timeouts, spoofed results
-cd relay && yarn build && cd ../e2e && yarn && xvfb-run -a node run.mjs
+yarn test        # 29 relay tests + typechecks
+yarn test:e2e    # 23 end-to-end steps in real Chromium (needs xvfb)
 ```
 
-The end-to-end run loads the unpacked extension in real Chromium, drives the side panel like a user, connects two MCP agents, and checks 28 steps: prompts, reading, design extraction, screenshots, forms (including a React-style controlled input and a rich-text editor), navigation, tab groups, blocking, pause, relay restart and revoke. `SCREENSHOT_DIR=/some/dir` saves panel and prompt screenshots.
+The end-to-end run loads the built extension, drives the side panel like a person would, connects MCP agents, and runs the whole Migma flow against a fake Migma:
 
-## Toward Migma
+- one-click connect (the tab closes itself),
+- account calls and team isolation,
+- site-initiated connect with confirmation and account replacement,
+- cancel, nonce replay and foreign-relay rejection,
+- revocation with a notice in the panel, and disconnecting from either side.
 
-1. **Host the relay in migma-backend.** Mount `handleHttp` at `/browser/mcp` and `handleUpgrade` at `/browser/extension`, with Redis pub-sub because the backend runs several instances.
-2. **Sign in with Migma instead of pasted tokens.** The extension signs into the user's Migma account; MCP clients that already use Migma's OAuth get the browser tools next to the `migma_*` tools.
-3. **Give the design agent eyes.** `extract_design` on the brand's site feeds brand guidelines; `read_page` on a Google Doc or Word brief becomes the email brief; `screenshot` plus `extract_design` on inspiration sites become saved references; `get_selection` turns highlighted text into "write an email about this".
-4. **Chrome Web Store listing** with a privacy policy and a single-purpose statement for the `<all_urls>` permission.
+`SCREENSHOT_DIR=/some/dir` saves screenshots of the panel and both prompt windows.

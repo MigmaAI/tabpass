@@ -3,74 +3,13 @@ import { randomBytes } from 'node:crypto';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { WebSocket } from 'ws';
 
-import { PROTOCOL_VERSION, type AgentAccess, type CallMessage, type RelayMessage } from '../src/protocol.js';
+import { PROTOCOL_VERSION } from '../src/protocol.js';
 import { createRelayServer, type RelayServer } from '../src/server.js';
-import { browserIdFromKey, hashSecret } from '../src/tokens.js';
+import { browserIdFromKey } from '../src/tokens.js';
 import { BROWSER_TOOLS } from '../src/tools.js';
 
-interface FakeAgent {
-  token: string;
-  tokenHash: string;
-  label: string;
-  access: AgentAccess;
-}
-
-function makeAgent(browserKey: string, label: string, access: AgentAccess): FakeAgent {
-  const secret = randomBytes(32).toString('base64url');
-  return { token: `mtb_${browserIdFromKey(browserKey)}.${secret}`, tokenHash: hashSecret(secret), label, access };
-}
-
-/** Stands in for the Chrome extension's service worker. */
-class FakeExtension {
-  readonly browserKey = randomBytes(32).toString('base64url');
-  readonly calls: CallMessage[] = [];
-  readonly messages: RelayMessage[] = [];
-  socket!: WebSocket;
-  onCall: (call: CallMessage) => void = (call) => this.reply(call.id, `ok:${call.tool}`);
-
-  async connect(url: string, agents: FakeAgent[], protocol = PROTOCOL_VERSION): Promise<RelayMessage> {
-    this.socket = new WebSocket(url);
-    await new Promise<void>((resolve, reject) => {
-      this.socket.once('open', () => resolve());
-      this.socket.once('error', reject);
-    });
-    const first = new Promise<RelayMessage>((resolve) => {
-      this.socket.on('message', (data) => {
-        const message = JSON.parse(data.toString()) as RelayMessage;
-        this.messages.push(message);
-        if (message.type === 'call') {
-          this.calls.push(message);
-          this.onCall(message);
-        }
-        resolve(message);
-      });
-    });
-    this.send({ type: 'hello', protocol, browserKey: this.browserKey, extensionVersion: 'test', agents: this.grants(agents) });
-    return first;
-  }
-
-  grants(agents: FakeAgent[]): Array<{ tokenHash: string; label: string; access: AgentAccess }> {
-    return agents.map(({ tokenHash, label, access }) => ({ tokenHash, label, access }));
-  }
-
-  reply(id: string, text: string, isError = false): void {
-    this.send({ type: 'result', id, result: { content: [{ type: 'text', text }], isError } });
-  }
-
-  send(message: unknown): void {
-    this.socket.send(JSON.stringify(message));
-  }
-
-  close(): Promise<void> {
-    return new Promise((resolve) => {
-      if (this.socket.readyState === WebSocket.CLOSED) return resolve();
-      this.socket.once('close', () => resolve());
-      this.socket.close();
-    });
-  }
-}
+import { FakeExtension, makeAgent, type FakeAgent } from './helpers.js';
 
 async function connectClient(url: string, token?: string): Promise<Client> {
   const client = new Client({ name: 'test-agent', version: '1.0.0' });
@@ -263,7 +202,7 @@ describe('relay', () => {
   it('closes connections that speak another protocol version', async () => {
     const extension = new FakeExtension();
     extensions.push(extension);
-    const message = await extension.connect(wsUrl, [], PROTOCOL_VERSION + 1);
+    const message = await extension.connect(wsUrl, [], { protocol: PROTOCOL_VERSION + 1 });
     expect(message.type).toBe('error');
     await new Promise<void>((resolve) => extension.socket.once('close', () => resolve()));
   });
@@ -279,6 +218,6 @@ describe('relay', () => {
   it('reports health', async () => {
     await startExtension(() => []);
     const response = await fetch(`${base}/health`);
-    expect(await response.json()).toEqual({ ok: true, browsers: 1, pendingCalls: 0 });
+    expect(await response.json()).toEqual({ ok: true, browsers: 1, accounts: 0, pendingCalls: 0 });
   });
 });

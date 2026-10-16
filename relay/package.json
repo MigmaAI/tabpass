@@ -1,12 +1,12 @@
 {
-  "name": "@migma/tabs-relay",
-  "version": "0.1.0",
-  "description": "Remote MCP relay that lets AI agents read and control the tabs of a browser running the Migma Tabs extension.",
+  "name": "@tabpass/relay",
+  "version": "0.2.0",
+  "description": "Remote MCP relay that lets AI agents read and use the tabs of a browser running the Tabpass extension.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "migma-tabs-relay": "dist/cli.js"
+    "tabpass-relay": "dist/cli.js"
   },
   "files": [
     "dist"
@@ -33,6 +33,11 @@
     "typescript": "^5.9.0",
     "vitest": "^3.2.0"
   },
-  "private": true,
-  "license": "UNLICENSED"
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "chrome-extension",
+    "ai-agents",
+    "browser"
+  ]
 }

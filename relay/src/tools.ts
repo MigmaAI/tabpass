@@ -234,3 +234,44 @@ export function toolsForAccess(access: AgentAccess | null): BrowserToolDefinitio
   if (access === null || access === 'control') return BROWSER_TOOLS;
   return BROWSER_TOOLS.filter((tool) => tool.access === 'read');
 }
+
+// ---------- account mode (a provider such as Migma calls for a person) ----------
+
+const browserArg = z
+  .string()
+  .min(1)
+  .max(80)
+  .optional()
+  .describe("Which of the person's browsers to use, by name from list_browsers. Default: the one they used last.");
+
+export const LIST_BROWSERS_TOOL: BrowserToolDefinition = {
+  name: 'list_browsers',
+  title: 'List browsers',
+  description:
+    "List the person's connected browsers and when each was last used. Other tools use the most recent one unless you pass its name as `browser`.",
+  access: 'read',
+  inputSchema: {},
+  annotations: READ,
+};
+
+export const ACCOUNT_INSTRUCTIONS = `${SERVER_INSTRUCTIONS} The person may have several browsers connected; tools use the one they used last unless you pass \`browser\`.`;
+
+/**
+ * Tools for account mode. Access is enforced again in the extension (the person picks Read or
+ * Read and act when connecting), so pass the access level you know, or 'control' to list all.
+ */
+export function accountTools(access: AgentAccess = 'control'): BrowserToolDefinition[] {
+  return [
+    LIST_BROWSERS_TOOL,
+    ...toolsForAccess(access).map((tool) => ({ ...tool, inputSchema: { ...tool.inputSchema, browser: browserArg } })),
+  ];
+}
+
+export type ParsedToolArgs = { ok: true; args: Record<string, unknown> } | { ok: false; error: string };
+
+/** Validates arguments against a tool's schema (the MCP SDK does this for MCP requests). */
+export function parseToolArgs(tool: BrowserToolDefinition, args: unknown): ParsedToolArgs {
+  const parsed = z.object(tool.inputSchema).safeParse(args ?? {});
+  if (parsed.success) return { ok: true, args: parsed.data };
+  return { ok: false, error: parsed.error.issues.map((issue) => `${issue.path.join('.') || 'args'}: ${issue.message}`).join('; ') };
+}

@@ -1,11 +1,11 @@
 {
-  "name": "@migma/tabs-e2e",
+  "name": "@tabpass/e2e",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "MIT",
   "type": "module",
   "scripts": {
-    "icons": "node make-icons.mjs",
-    "test": "node run.mjs"
+    "test": "node run.mjs",
+    "icons": "node make-icons.mjs"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",

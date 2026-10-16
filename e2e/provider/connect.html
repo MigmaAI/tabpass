@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Fake Migma</title>
+  </head>
+  <body>
+    <!-- Stands in for migma.ai/connect/browser and the Migma app in end-to-end tests. -->
+    <h1 id="title">Fake Migma</h1>
+    <button id="use-browser">Use my browser</button>
+    <button id="evil-relay">Connect with another relay</button>
+    <button id="hello">Check browser</button>
+    <button id="disconnect">Disconnect browser</button>
+    <pre id="result"></pre>
+    <script>
+      const params = new URLSearchParams(location.search);
+      const ext = params.get('ext');
+      const as = params.get('as') || 'user_alice';
+
+      function message(body) {
+        return new Promise((resolve) => chrome.runtime.sendMessage(ext, body, (reply) => resolve(reply ?? { error: chrome.runtime.lastError?.message })));
+      }
+      function show(value) {
+        document.getElementById('result').textContent = JSON.stringify(value);
+      }
+      async function connect(nonce, relayUrl) {
+        const connection = await fetch('/api/connections', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ accountId: as, relayUrl }),
+        }).then((response) => response.json());
+        show(await message({ type: 'tabpass.connect', nonce, connection }));
+      }
+
+      document.getElementById('use-browser').onclick = () => connect(undefined);
+      document.getElementById('evil-relay').onclick = () => connect(undefined, 'wss://evil.example.com/extension');
+      document.getElementById('hello').onclick = async () => show(await message({ type: 'tabpass.hello' }));
+      document.getElementById('disconnect').onclick = async () => show(await message({ type: 'tabpass.disconnect' }));
+      // Opened by Tabpass's "Connect to Migma": the person is signed in, so finish right away.
+      if (params.get('tabpass')) connect(params.get('tabpass'));
+    </script>
+  </body>
+</html>

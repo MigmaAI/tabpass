@@ -1,0 +1,12 @@
+{
+  "name": "tabpass",
+  "private": true,
+  "license": "MIT",
+  "description": "Open-source bridge that lets any AI agent read and use your Chrome tabs over MCP. By Migma.",
+  "scripts": {
+    "setup": "yarn --cwd relay install && yarn --cwd extension install && yarn --cwd e2e install",
+    "build": "yarn --cwd relay build && yarn --cwd extension build",
+    "test": "yarn --cwd relay test && yarn --cwd relay typecheck && yarn --cwd extension typecheck",
+    "test:e2e": "yarn --cwd relay build && yarn --cwd extension build:dev && cd e2e && xvfb-run -a node run.mjs"
+  }
+}
