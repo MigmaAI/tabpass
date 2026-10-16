@@ -4,7 +4,7 @@
 
 Open source (MIT), by the [Migma](https://migma.ai) team.
 
-<p align="center"><img src="store/images/01-home.png" alt="The Tabpass side panel next to a shop page: Migma, three AI tools and recent activity" width="720"></p>
+<p align="center"><img src="store/images/01-home.png" alt="The Tabpass side panel next to a shop page: three AI tools and recent activity" width="720"></p>
 
 It follows the structure of OpenAI's ChatGPT Chrome extension: a side panel, per-site approval, a tab group per tool, and read vs act. The difference is that the browser is reached through a **remote MCP server**, so any AI tool can use it, from anywhere.
 
@@ -32,14 +32,15 @@ For tools that cannot sign in, **Make a link with a key** gives a link with its 
 
 Step-by-step guides for 19 tools: [docs/clients.md](docs/clients.md). Agents that read docs can start at `https://tabs.migma.ai/llms.txt`.
 
-## Four ways in
+## Ways to connect
 
 | | How | Who it acts as |
 |---|---|---|
 | **One URL** (OAuth) | Add `https://tabs.migma.ai/mcp`, approve in Tabpass's window | The tool's name, with the access you picked |
 | **Link with a key** | **Make a link with a key** in the side panel | The name you typed |
 | **Website** | The site's "Connect your browser" button, then confirm in Tabpass | The site's name; it gets a token for its AI ([web protocol](docs/web-protocol.md)) |
-| **Migma account** | **Connect** next to Migma in the side panel | Migma, for the person signed in to Migma |
+
+Migma account connections are available in development builds only until Migma's integration ships. The store build does not show a Migma Connect row.
 
 Account mode is built for teams: a browser binds to one **person**, never to an org, so teammates, admins and org-wide keys can never reach someone else's browser. See [docs/migma-integration.md](docs/migma-integration.md) for Migma's side and every edge case, and [docs/accounts.md](docs/accounts.md) to add another provider.
 
@@ -102,7 +103,7 @@ npx wrangler secret put ACCOUNTS_VERIFY_SECRET  # same
 yarn deploy:worker
 ```
 
-Set `PUBLIC_URL`, and `ACCOUNTS_VERIFY_URL` for account mode, under `[vars]` in `relay/wrangler.toml`, and uncomment the `routes` line to serve it on your domain.
+Set `PUBLIC_URL`, and `ACCOUNTS_VERIFY_URL` for account mode, under `[vars]` in `relay/wrangler.toml`. The custom domain route is configured for `tabs.migma.ai`; its zone must belong to the Cloudflare account used to deploy.
 
 ### Node or Docker
 

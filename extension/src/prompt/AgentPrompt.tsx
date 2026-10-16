@@ -1,10 +1,9 @@
 import { useState } from 'react';
 
-import { IconTile } from '@/components/ios/IconTile';
 import { Pill } from '@/components/ios/Pill';
 import { send, type Access, type AgentPrompt as AgentPromptData } from '@/lib/api';
 
-import { guideForName } from '@/components/tiles';
+import { NamedClientTile } from '@/components/tiles';
 
 import { AccessChoice } from './AccessChoice';
 import { PromptLayout } from './PromptLayout';
@@ -15,7 +14,6 @@ import { PromptLayout } from './PromptLayout';
  */
 function AgentPrompt({ prompt }: { prompt: AgentPromptData }) {
   const [access, setAccess] = useState<Access>('read');
-  const guide = guideForName(prompt.name);
   const decide = async (decision: 'connect' | 'cancel'): Promise<void> => {
     await send('agentDecision', { id: prompt.id, decision, access });
     window.close();
@@ -26,11 +24,7 @@ function AgentPrompt({ prompt }: { prompt: AgentPromptData }) {
 
   return (
     <PromptLayout
-      tile={
-        <IconTile color={guide?.color ?? 'var(--primary)'} size="lg" className={guide ? undefined : 'text-primary-foreground'}>
-          {guide?.monogram ?? prompt.name.slice(0, 2)}
-        </IconTile>
-      }
+      tile={<NamedClientTile name={prompt.name} size="lg" />}
       title={`Connect ${prompt.name} to your browser?`}
       message={
         <>

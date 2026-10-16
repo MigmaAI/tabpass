@@ -1,5 +1,5 @@
 // Account providers: services that can pair this browser with a person's account in one click
-// (Migma today). A provider's website talks to Tabpass through `externally_connectable`, which
+// (Migma in development until its integration ships). A provider's website talks through `externally_connectable`, which
 // must list the same origins in manifest.json.
 
 import { BUILD_MODE, DEV_PROVIDER_ORIGIN } from './build-config.js';
@@ -28,7 +28,7 @@ export const PROVIDERS =
           allowInsecureRelay: true,
         },
       ]
-    : [MIGMA];
+    : [];
 
 export function providerById(id) {
   return PROVIDERS.find((provider) => provider.id === id) ?? null;

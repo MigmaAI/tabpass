@@ -24,8 +24,6 @@ export interface ClientGuide {
   id: string;
   name: string;
   kind: ClientKind;
-  /** 1-2 letters for an icon tile. */
-  monogram: string;
   /** Tile background, readable with white text. */
   color: string;
   /** True if it can use the universal URL with MCP OAuth (no token). */
@@ -77,7 +75,6 @@ export const CLIENTS: ClientGuide[] = [
     id: 'claude',
     name: 'Claude',
     kind: 'web',
-    monogram: 'Cl',
     color: '#b5532f',
     oauth: true,
     needsPublicUrl: true,
@@ -100,7 +97,6 @@ export const CLIENTS: ClientGuide[] = [
     id: 'chatgpt',
     name: 'ChatGPT',
     kind: 'web',
-    monogram: 'Ch',
     color: '#0e7c61',
     oauth: true,
     needsPublicUrl: true,
@@ -118,7 +114,6 @@ export const CLIENTS: ClientGuide[] = [
     id: 'cursor',
     name: 'Cursor',
     kind: 'ide',
-    monogram: 'Cu',
     color: '#27272a',
     oauth: true,
     action: {
@@ -138,7 +133,6 @@ export const CLIENTS: ClientGuide[] = [
     id: 'claude-code',
     name: 'Claude Code',
     kind: 'cli',
-    monogram: 'CC',
     color: '#7c4a32',
     oauth: true,
     steps: (mcpUrl) => [
@@ -153,7 +147,6 @@ export const CLIENTS: ClientGuide[] = [
     id: 'codex',
     name: 'Codex',
     kind: 'cli',
-    monogram: 'Cx',
     color: '#4f46b8',
     oauth: true,
     steps: (mcpUrl) => [
@@ -168,7 +161,6 @@ export const CLIENTS: ClientGuide[] = [
     id: 'vscode',
     name: 'VS Code',
     kind: 'ide',
-    monogram: 'VS',
     color: '#0065a9',
     oauth: true,
     action: {
@@ -190,7 +182,6 @@ export const CLIENTS: ClientGuide[] = [
     id: 'gemini-cli',
     name: 'Gemini CLI',
     kind: 'cli',
-    monogram: 'Ge',
     color: '#2f5fc4',
     oauth: true,
     steps: (mcpUrl) => [
@@ -204,7 +195,6 @@ export const CLIENTS: ClientGuide[] = [
     id: 'windsurf',
     name: 'Windsurf',
     kind: 'ide',
-    monogram: 'Ws',
     color: '#0f766e',
     oauth: true,
     steps: (mcpUrl) => [
@@ -219,7 +209,6 @@ export const CLIENTS: ClientGuide[] = [
     id: 'copilot-cli',
     name: 'Copilot CLI',
     kind: 'cli',
-    monogram: 'GH',
     color: '#24292f',
     oauth: true,
     steps: (mcpUrl) => [
@@ -233,7 +222,6 @@ export const CLIENTS: ClientGuide[] = [
     id: 'zed',
     name: 'Zed',
     kind: 'ide',
-    monogram: 'Z',
     color: '#084ccf',
     oauth: true,
     steps: (mcpUrl) => [
@@ -247,7 +235,6 @@ export const CLIENTS: ClientGuide[] = [
     id: 'cline',
     name: 'Cline',
     kind: 'ide',
-    monogram: 'Cn',
     color: '#3f3f46',
     oauth: true,
     steps: (mcpUrl) => [
@@ -262,7 +249,6 @@ export const CLIENTS: ClientGuide[] = [
     id: 'goose',
     name: 'Goose',
     kind: 'app',
-    monogram: 'Go',
     color: '#1e293b',
     oauth: true,
     action: {
@@ -281,7 +267,6 @@ export const CLIENTS: ClientGuide[] = [
     id: 'lm-studio',
     name: 'LM Studio',
     kind: 'app',
-    monogram: 'LM',
     color: '#4338ca',
     oauth: true,
     action: {
@@ -301,7 +286,6 @@ export const CLIENTS: ClientGuide[] = [
     id: 'opencode',
     name: 'OpenCode',
     kind: 'cli',
-    monogram: 'Oc',
     color: '#3a3a3a',
     oauth: true,
     steps: (mcpUrl) => [
@@ -318,7 +302,6 @@ export const CLIENTS: ClientGuide[] = [
     id: 'warp',
     name: 'Warp',
     kind: 'app',
-    monogram: 'W',
     color: '#0369a1',
     oauth: true,
     steps: (mcpUrl) => [
@@ -333,7 +316,6 @@ export const CLIENTS: ClientGuide[] = [
     id: 'perplexity',
     name: 'Perplexity',
     kind: 'web',
-    monogram: 'Px',
     color: '#20808d',
     oauth: true,
     needsPublicUrl: true,
@@ -350,7 +332,6 @@ export const CLIENTS: ClientGuide[] = [
     id: 'le-chat',
     name: 'Le Chat',
     kind: 'web',
-    monogram: 'LC',
     color: '#c2410c',
     oauth: true,
     needsPublicUrl: true,
@@ -367,7 +348,6 @@ export const CLIENTS: ClientGuide[] = [
     id: 'jetbrains',
     name: 'JetBrains AI',
     kind: 'ide',
-    monogram: 'JB',
     color: '#6b3fa0',
     oauth: false,
     steps: (mcpUrl) => [
@@ -382,7 +362,6 @@ export const CLIENTS: ClientGuide[] = [
     id: 'other',
     name: 'Other MCP tools',
     kind: 'other',
-    monogram: 'MC',
     color: '#52525b',
     oauth: true,
     steps: (mcpUrl) => [

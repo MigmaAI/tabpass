@@ -39,8 +39,6 @@ Tools without sign-in get their own link with a key instead.
 
 Some AI websites can connect from their own page, in one click. Tabpass still asks you first, in its own window.
 
-Use Migma? Click "Connect" next to Migma and you are done.
-
 WHAT A TOOL CAN DO
 With Read:
 - see the titles and addresses of your open tabs
@@ -48,7 +46,6 @@ With Read:
 - read the text you highlighted
 - take a screenshot of the visible part of a tab
 - read a page's colors, fonts and layout
-- read Google Docs and Sheets you have open
 
 With Read and act, also:
 - open, switch, group and close tabs
@@ -135,10 +132,10 @@ It serves the relay as `https://tabs.migma.ai` and two made-up sites (`northwind
 
 | File | Caption (in the image) | What it shows |
 |---|---|---|
-| `01-home.png` | Your AI, your open tabs. | Home: Migma with its Connect button, three AI tools, recent activity, next to a shop page. |
+| `01-home.png` | Your AI, your open tabs. | Home: three AI tools and recent activity, next to a shop page. |
 | `02-connect.png` | One link connects any AI tool. | "Connect an AI tool": the one link and the popular tools with Add buttons. |
 | `03-approve-sites.png` | You approve each new site. | "Allow Claude to use northwind.studio?" with Always allow, Allow for 10 minutes, Don't allow, Block this site. |
 | `04-sign-in.png` | Sign in once. You choose what it can do. | ChatGPT signing in: the sign-in page, and Tabpass's window with Read or Read and act. |
 | `05-dark.png` | Light or dark, it follows Chrome. | Home in dark mode. |
 
-Upload them in this order. Promo images must not use other companies' logos: the tools appear only as letter tiles, as in the extension.
+Upload them in this order. Screenshots show the provider icons bundled in the extension. Promo tiles use only Tabpass's own name and icon.
