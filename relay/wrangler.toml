@@ -1,0 +1,34 @@
+# Tabpass relay on Cloudflare Workers. Same routes as the Node relay; each browser lives in its own
+# Durable Object (WebSocket hibernation), each person's browser list in another.
+#
+#   npx wrangler secret put RELAY_SECRET          # 32+ random chars, keep stable (OAuth)
+#   npx wrangler secret put INTERNAL_SECRET       # only for account providers such as Migma
+#   npx wrangler secret put ACCOUNTS_VERIFY_SECRET
+#   yarn deploy:worker
+
+name = "tabpass-relay"
+main = "src/worker/index.ts"
+compatibility_date = "2026-10-01"
+compatibility_flags = ["nodejs_compat"]
+
+# routes = [{ pattern = "tabs.migma.ai", custom_domain = true }]
+
+[vars]
+PUBLIC_URL = "https://tabs.migma.ai"
+INSTALL_URL = "https://github.com/migmaai/tabpass#install"
+# ACCOUNTS_VERIFY_URL = "https://api.migma.ai/internal/tabpass/verify"
+
+[[durable_objects.bindings]]
+name = "BROWSERS"
+class_name = "BrowserObject"
+
+[[durable_objects.bindings]]
+name = "ACCOUNTS"
+class_name = "AccountObject"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["BrowserObject", "AccountObject"]
+
+[observability]
+enabled = true

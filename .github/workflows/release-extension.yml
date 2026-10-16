@@ -1,0 +1,188 @@
+name: Release extension
+
+# Builds the store package and sends it to the Chrome Web Store.
+#
+# The safe path is the default: a tag push (or a manual run left on "upload") only UPLOADS the new
+# package as a draft. Nothing reaches users until a person submits it in the developer dashboard,
+# or runs this workflow by hand with mode "publish".
+#
+# The Chrome Web Store API (v2) cannot pick an audience: "publish" always goes out to the
+# visibility set in the dashboard. While the item is Private, that means trusted testers only.
+#
+# Secrets (repository or "chrome-web-store" environment): CWS_EXTENSION_ID, CWS_PUBLISHER_ID,
+# CWS_CLIENT_ID, CWS_CLIENT_SECRET, CWS_REFRESH_TOKEN. See docs/publishing.md.
+
+on:
+  push:
+    tags:
+      - 'extension-v*'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'upload = new draft only (safe). publish = upload, then submit for review; it goes live after approval to the visibility set in the dashboard.'
+        type: choice
+        options:
+          - upload
+          - publish
+        default: upload
+      deploy_percentage:
+        description: 'publish only: share of users who get it first (1-100). Leave empty for everyone. The store offers this only to items with more than 10,000 users.'
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-extension
+  cancel-in-progress: false
+
+env:
+  # Pinned: this step holds publishing credentials.
+  CWS_CLI: chrome-webstore-upload-cli@4.0.2
+
+jobs:
+  build:
+    name: Build and package
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.package.outputs.version }}
+      zip: ${{ steps.package.outputs.zip }}
+      sha256: ${{ steps.package.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          # No dependency cache in a release build: install fresh from the lockfile.
+          package-manager-cache: false
+
+      - name: Tag matches the manifest version
+        if: startsWith(github.ref, 'refs/tags/extension-v')
+        run: |
+          tag_version="${GITHUB_REF_NAME#extension-v}"
+          manifest_version="$(node -p "require('./extension/public/manifest.json').version")"
+          if [ "$tag_version" != "$manifest_version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME says $tag_version, but extension/public/manifest.json says $manifest_version. Bump the version, commit, and tag extension-v$manifest_version."
+            exit 1
+          fi
+
+      - name: Install and build (store build)
+        run: yarn --cwd extension install --frozen-lockfile && yarn --cwd extension build
+
+      - name: Check and package
+        id: package
+        run: node scripts/package.mjs
+
+      - name: Keep the package as a workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: tabpass-extension-${{ steps.package.outputs.version }}
+          path: ${{ steps.package.outputs.zip }}
+          if-no-files-found: error
+          retention-days: 90
+
+  github-release:
+    name: Attach to GitHub Release
+    if: startsWith(github.ref, 'refs/tags/extension-v')
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: tabpass-extension-${{ needs.build.outputs.version }}
+          path: release
+
+      - name: Verify checksum
+        run: echo "${{ needs.build.outputs.sha256 }}  release/tabpass-${{ needs.build.outputs.version }}.zip" | sha256sum --check
+
+      - uses: softprops/action-gh-release@v3
+        with:
+          name: Tabpass extension ${{ needs.build.outputs.version }}
+          body: |
+            Chrome Web Store package for Tabpass ${{ needs.build.outputs.version }}.
+
+            To try it without the store: unzip, open chrome://extensions, turn on Developer mode, and choose Load unpacked.
+
+            SHA-256: `${{ needs.build.outputs.sha256 }}`
+          generate_release_notes: true
+          files: release/tabpass-${{ needs.build.outputs.version }}.zip
+          fail_on_unmatched_files: true
+
+  chrome-web-store:
+    name: Chrome Web Store (${{ inputs.mode || 'upload' }})
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Add required reviewers to this environment in Settings > Environments to gate every store upload.
+    environment: chrome-web-store
+    env:
+      MODE: ${{ inputs.mode || 'upload' }}
+      DEPLOY_PERCENTAGE: ${{ inputs.deploy_percentage }}
+      ZIP: release/tabpass-${{ needs.build.outputs.version }}.zip
+      EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
+      PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
+      CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+      CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+      REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+    steps:
+      - name: Check credentials
+        run: |
+          missing=""
+          [ -n "$EXTENSION_ID" ] || missing="$missing CWS_EXTENSION_ID"
+          [ -n "$PUBLISHER_ID" ] || missing="$missing CWS_PUBLISHER_ID"
+          [ -n "$CLIENT_ID" ] || missing="$missing CWS_CLIENT_ID"
+          [ -n "$CLIENT_SECRET" ] || missing="$missing CWS_CLIENT_SECRET"
+          [ -n "$REFRESH_TOKEN" ] || missing="$missing CWS_REFRESH_TOKEN"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing secrets:$missing. Add them under Settings > Secrets and variables > Actions (see docs/publishing.md)."
+            exit 1
+          fi
+          if [ -n "$DEPLOY_PERCENTAGE" ] && ! [[ "$DEPLOY_PERCENTAGE" =~ ^([1-9][0-9]?|100)$ ]]; then
+            echo "::error::deploy_percentage must be a whole number from 1 to 100, or empty."
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: tabpass-extension-${{ needs.build.outputs.version }}
+          path: release
+
+      - name: Verify checksum
+        run: echo "${{ needs.build.outputs.sha256 }}  $ZIP" | sha256sum --check
+
+      - name: Upload new draft
+        run: npx --yes "$CWS_CLI" upload --source "$ZIP"
+
+      - name: Submit for review and publish
+        if: env.MODE == 'publish'
+        run: |
+          if [ -n "$DEPLOY_PERCENTAGE" ]; then
+            npx --yes "$CWS_CLI" publish --deploy-percentage "$DEPLOY_PERCENTAGE"
+          else
+            npx --yes "$CWS_CLI" publish
+          fi
+
+      - name: Summary
+        run: |
+          {
+            echo "### Tabpass ${{ needs.build.outputs.version }}: $MODE"
+            echo ""
+            echo "- Package: \`$ZIP\` (sha256 \`${{ needs.build.outputs.sha256 }}\`)"
+            if [ "$MODE" = "publish" ]; then
+              echo "- Submitted for review. After approval it goes live to the visibility set in the dashboard."
+            else
+              echo "- Uploaded as a draft. Nothing is live yet: open the developer dashboard, check the listing and privacy tabs, then **Submit for review**."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,8 +1,17 @@
-import { randomUUID } from 'node:crypto';
-
 import type { WebSocket } from 'ws';
 
-import type { AccountVerifier, BrowserAccount } from './accounts.js';
+import type { AccountVerifier, BrowserAccount } from '../core/accounts.js';
+import {
+  chooseBrowser,
+  errorResult,
+  MESSAGES,
+  PendingCalls,
+  type AccountBrowser,
+  type AccountCallOptions,
+  type AgentLookup,
+  type BrowserDirectory,
+  type DirectoryStats,
+} from '../core/directory.js';
 import {
   PROTOCOL_VERSION,
   parseExtensionMessage,
@@ -10,20 +19,21 @@ import {
   type AccountStatus,
   type AgentGrant,
   type CallMessage,
+  type ExtensionMessage,
   type HelloMessage,
   type RelayMessage,
   type ToolResult,
-} from './protocol.js';
-import { browserIdFromKey, hashesEqual, type ParsedAgentToken } from './tokens.js';
+} from '../core/protocol.js';
+import { browserIdFromKey, hashesEqual, type ParsedAgentToken } from '../core/tokens.js';
 
-export interface BrowserHubOptions {
+export interface MemoryDirectoryOptions {
   /** Public MCP endpoint, sent to the extension so it can show agents where to connect. */
   mcpUrl: string;
   /** Verifies account credentials (account mode). Without it, browsers can only serve token agents. */
   accounts?: AccountVerifier;
   /** How often a connected browser's account is checked again, so a revoke made elsewhere lands. */
   reverifyMs?: number;
-  /** How long a tool call may take, including the user answering a site-access prompt. */
+  /** How long a tool call may take, including the person answering a site-access prompt. */
   callTimeoutMs?: number;
   /** A socket that has not said hello within this window is dropped. */
   helloTimeoutMs?: number;
@@ -47,31 +57,6 @@ interface BrowserConnection {
   checking: boolean;
 }
 
-interface PendingCall {
-  browserId: string;
-  resolve: (result: ToolResult) => void;
-  timer: NodeJS.Timeout;
-}
-
-export type AgentLookup =
-  | { status: 'ok'; agent: AgentGrant }
-  | { status: 'offline' }
-  | { status: 'invalid' };
-
-export interface AccountBrowser {
-  browserId: string;
-  name: string;
-  connectedAt: number;
-  lastActiveAt: number;
-}
-
-export interface AccountCallOptions {
-  /** Browser id or name from accountBrowsers(). Default: the most recently active one. */
-  browser?: string;
-  /** Name of the client the call came from, e.g. "Claude", shown in the extension's activity. */
-  via?: string;
-}
-
 const DEFAULT_CALL_TIMEOUT_MS = 120_000;
 const DEFAULT_HELLO_TIMEOUT_MS = 10_000;
 const DEFAULT_HEARTBEAT_MS = 30_000;
@@ -80,23 +65,19 @@ const UNAVAILABLE_RETRY_MS = 60_000;
 const CLOSE_REPLACED = 4000;
 const CLOSE_PROTOCOL = 4001;
 
-export function errorResult(message: string): ToolResult {
-  return { content: [{ type: 'text', text: message }], isError: true };
-}
-
-/** Holds the live extension connections and correlates tool calls with results. */
-export class BrowserHub {
+/** The Node relay's directory: every browser connection in this one process. */
+export class MemoryDirectory implements BrowserDirectory {
   private readonly browsers = new Map<string, BrowserConnection>();
   private readonly byAccount = new Map<string, Set<string>>();
-  private readonly pending = new Map<string, PendingCall>();
+  private readonly usedCodes = new Map<string, number>();
+  private readonly pending: PendingCalls;
   private readonly heartbeat: NodeJS.Timeout;
-  private readonly callTimeoutMs: number;
   private readonly helloTimeoutMs: number;
   private readonly reverifyMs: number;
   private readonly log: (message: string) => void;
 
-  constructor(private readonly options: BrowserHubOptions) {
-    this.callTimeoutMs = options.callTimeoutMs ?? DEFAULT_CALL_TIMEOUT_MS;
+  constructor(private readonly options: MemoryDirectoryOptions) {
+    this.pending = new PendingCalls(options.callTimeoutMs ?? DEFAULT_CALL_TIMEOUT_MS);
     this.helloTimeoutMs = options.helloTimeoutMs ?? DEFAULT_HELLO_TIMEOUT_MS;
     this.reverifyMs = options.reverifyMs ?? DEFAULT_REVERIFY_MS;
     this.log = options.log ?? ((): void => undefined);
@@ -104,11 +85,14 @@ export class BrowserHub {
     this.heartbeat.unref();
   }
 
-  /** Takes ownership of a freshly upgraded extension socket. */
-  attach(socket: WebSocket): void {
-    let connection: BrowserConnection | null = null;
+  /**
+   * Takes ownership of a freshly upgraded extension socket. `expectedBrowserId` comes from the
+   * `?browser=` query; when given, the hello must prove that id or the socket is closed.
+   */
+  attach(socket: WebSocket, expectedBrowserId?: string): void {
+    let ready: Promise<BrowserConnection | null> | null = null;
     const helloTimer = setTimeout(() => {
-      if (!connection) socket.close(CLOSE_PROTOCOL, 'Expected hello');
+      if (!ready) socket.close(CLOSE_PROTOCOL, 'Expected hello');
     }, this.helloTimeoutMs);
 
     socket.on('message', (data, isBinary) => {
@@ -121,148 +105,108 @@ export class BrowserHub {
         this.send(socket, { type: 'error', message: 'Malformed message' });
         return;
       }
-
       if (message.type === 'hello') {
-        if (message.protocol !== PROTOCOL_VERSION) {
-          this.send(socket, {
-            type: 'error',
-            message: `This relay speaks protocol ${PROTOCOL_VERSION}; update the extension or the relay.`,
-          });
-          socket.close(CLOSE_PROTOCOL, 'Protocol mismatch');
-          return;
-        }
-        if (connection) return; // one hello per socket
+        if (ready) return; // one hello per socket
         clearTimeout(helloTimer);
-        connection = this.register(socket, message);
-        void this.welcome(connection);
+        ready = this.hello(socket, message, expectedBrowserId);
         return;
       }
-
-      if (!connection) {
+      if (!ready) {
         socket.close(CLOSE_PROTOCOL, 'Expected hello');
         return;
       }
-
-      switch (message.type) {
-        case 'agents':
-          connection.agents = message.agents;
-          break;
-        case 'result':
-          this.settle(message.id, connection.browserId, message.result);
-          break;
-        case 'ping':
-          connection.alive = true;
-          this.send(socket, { type: 'pong' });
-          break;
-        case 'active':
-          connection.lastActiveAt = Date.now();
-          break;
-      }
+      void ready.then((connection) => {
+        if (connection) this.handle(connection, message);
+      });
     });
 
     socket.on('pong', () => {
-      if (connection) connection.alive = true;
+      void ready?.then((connection) => {
+        if (connection) connection.alive = true;
+      });
     });
 
     socket.on('close', () => {
       clearTimeout(helloTimer);
-      if (connection && this.browsers.get(connection.browserId) === connection) {
-        this.browsers.delete(connection.browserId);
-        this.unbind(connection);
-        this.failPending(connection.browserId, 'The browser disconnected before answering.');
-        this.log(`browser ${connection.browserId} disconnected`);
-      }
+      void ready?.then((connection) => {
+        if (connection && this.browsers.get(connection.browserId) === connection) {
+          this.browsers.delete(connection.browserId);
+          this.unbind(connection);
+          this.pending.failOwner(connection.browserId, MESSAGES.disconnected);
+          this.log(`browser ${connection.browserId} disconnected`);
+        }
+      });
     });
 
     socket.on('error', () => socket.terminate());
   }
 
-  // ---------- token agents ----------
+  // ---------- BrowserDirectory ----------
 
-  lookupAgent(token: ParsedAgentToken): AgentLookup {
+  async lookupAgent(token: ParsedAgentToken): Promise<AgentLookup> {
     const browser = this.browsers.get(token.browserId);
     if (!browser) return { status: 'offline' };
     const agent = browser.agents.find((candidate) => hashesEqual(candidate.tokenHash, token.tokenHash));
     return agent ? { status: 'ok', agent } : { status: 'invalid' };
   }
 
-  /** Forwards one token agent's tool call to its browser and waits for the result. Never rejects. */
-  call(token: ParsedAgentToken, tool: string, args: Record<string, unknown>): Promise<ToolResult> {
+  async callAgent(token: ParsedAgentToken, tool: string, args: Record<string, unknown>): Promise<ToolResult> {
     const browser = this.browsers.get(token.browserId);
-    if (!browser) {
-      return Promise.resolve(errorResult('The browser is offline. Open Chrome with the Tabpass extension, then try again.'));
-    }
-    if (!browser.agents.some((agent) => hashesEqual(agent.tokenHash, token.tokenHash))) {
-      return Promise.resolve(errorResult('This agent was removed in the browser. Ask the user to connect it again.'));
-    }
+    if (!browser) return errorResult(MESSAGES.offline);
+    if (!browser.agents.some((agent) => hashesEqual(agent.tokenHash, token.tokenHash))) return errorResult(MESSAGES.removed);
     return this.dispatch(browser, { tool, args, tokenHash: token.tokenHash });
   }
 
-  // ---------- account mode ----------
-
-  /** The person's browsers that are online on this relay, most recently active first. */
-  accountBrowsers(accountId: string): AccountBrowser[] {
+  async accountBrowsers(accountId: string): Promise<AccountBrowser[]> {
     return [...(this.byAccount.get(accountId) ?? [])]
       .map((browserId) => this.browsers.get(browserId))
       .filter((browser): browser is BrowserConnection => Boolean(browser?.account))
       .sort((a, b) => b.lastActiveAt - a.lastActiveAt)
-      .map(({ browserId, browserName, connectedAt, lastActiveAt }) => ({
-        browserId,
-        name: browserName,
-        connectedAt,
-        lastActiveAt,
-      }));
+      .map(({ browserId, browserName, connectedAt, lastActiveAt }) => ({ browserId, name: browserName, connectedAt, lastActiveAt }));
   }
 
-  /** Runs a tool in one of the person's browsers. Never rejects. */
-  callAccount(
+  async callAccount(
     accountId: string,
     tool: string,
     args: Record<string, unknown>,
     options: AccountCallOptions = {}
   ): Promise<ToolResult> {
-    const browsers = this.accountBrowsers(accountId);
-    if (!browsers.length) {
-      return Promise.resolve(
-        errorResult('No browser is connected for this person right now. Ask them to open Chrome with Tabpass and connect it.')
-      );
-    }
-    let chosen = browsers[0];
-    if (options.browser) {
-      const wanted = options.browser.trim().toLowerCase();
-      chosen = browsers.find((b) => b.browserId === options.browser || b.name.toLowerCase() === wanted);
-      if (!chosen) {
-        return Promise.resolve(
-          errorResult(`No connected browser called "${options.browser}". Connected: ${browsers.map((b) => b.name).join(', ')}.`)
-        );
-      }
-    }
-    const browser = this.browsers.get(chosen!.browserId);
-    if (!browser) return Promise.resolve(errorResult('That browser just disconnected. Try again.'));
+    const choice = chooseBrowser(await this.accountBrowsers(accountId), options.browser);
+    if ('error' in choice) return errorResult(choice.error);
+    const browser = this.browsers.get(choice.browser.browserId);
+    if (!browser || browser.account?.accountId !== accountId) return errorResult('That browser just disconnected. Try again.');
     return this.dispatch(browser, { tool, args, account: options.via ? { via: options.via.slice(0, 60) } : {} });
   }
 
-  /** Cuts a connection off now (e.g. the person removed it in the provider's settings). */
-  revokeConnection(connectionId: string): number {
+  async revokeConnection(accountId: string, connectionId: string): Promise<number> {
     let revoked = 0;
     for (const browser of this.browsers.values()) {
       if (browser.credential?.connectionId !== connectionId) continue;
+      if (browser.account && browser.account.accountId !== accountId) continue;
       this.unbind(browser);
       browser.credential = undefined;
-      this.failPending(browser.browserId, 'The connection to this browser was removed.');
+      this.pending.failOwner(browser.browserId, MESSAGES.revoked);
       this.send(browser.socket, { type: 'account', status: 'invalid' });
       revoked += 1;
     }
     return revoked;
   }
 
-  stats(): { browsers: number; accounts: number; pendingCalls: number } {
+  async consumeCode(_browserId: string, codeId: string, expiresAt: number): Promise<boolean> {
+    const now = Date.now();
+    for (const [id, expiry] of this.usedCodes) if (expiry < now) this.usedCodes.delete(id);
+    if (this.usedCodes.has(codeId)) return false;
+    this.usedCodes.set(codeId, expiresAt);
+    return true;
+  }
+
+  async stats(): Promise<DirectoryStats> {
     return { browsers: this.browsers.size, accounts: this.byAccount.size, pendingCalls: this.pending.size };
   }
 
   close(): void {
     clearInterval(this.heartbeat);
-    for (const id of this.pending.keys()) this.settle(id, null, errorResult('The relay is shutting down.'));
+    this.pending.failAll('The relay is shutting down.');
     for (const browser of this.browsers.values()) browser.socket.close(1001, 'Relay shutting down');
     this.browsers.clear();
     this.byAccount.clear();
@@ -270,17 +214,54 @@ export class BrowserHub {
 
   // ---------- internals ----------
 
-  private register(socket: WebSocket, hello: HelloMessage): BrowserConnection {
-    const browserId = browserIdFromKey(hello.browserKey);
+  private async hello(socket: WebSocket, hello: HelloMessage, expectedBrowserId?: string): Promise<BrowserConnection | null> {
+    if (hello.protocol !== PROTOCOL_VERSION) {
+      this.send(socket, { type: 'error', message: `This relay speaks protocol ${PROTOCOL_VERSION}; update the extension or the relay.` });
+      socket.close(CLOSE_PROTOCOL, 'Protocol mismatch');
+      return null;
+    }
+    const browserId = await browserIdFromKey(hello.browserKey);
+    if (expectedBrowserId && expectedBrowserId !== browserId) {
+      socket.close(CLOSE_PROTOCOL, 'Browser id does not match its key');
+      return null;
+    }
+    const connection = this.register(socket, browserId, hello);
+    const account = connection.credential ? await this.checkAccount(connection) : undefined;
+    if (this.browsers.get(browserId) === connection) {
+      this.send(socket, { type: 'welcome', browserId, mcpUrl: this.options.mcpUrl, ...(account ? { account } : {}) });
+    }
+    return connection;
+  }
+
+  private handle(connection: BrowserConnection, message: ExtensionMessage): void {
+    switch (message.type) {
+      case 'agents':
+        connection.agents = message.agents;
+        break;
+      case 'result':
+        this.pending.settle(message.id, connection.browserId, message.result);
+        break;
+      case 'ping':
+        connection.alive = true;
+        this.send(connection.socket, { type: 'pong' });
+        break;
+      case 'active':
+        connection.lastActiveAt = Date.now();
+        break;
+      default:
+        break;
+    }
+  }
+
+  private register(socket: WebSocket, browserId: string, hello: HelloMessage): BrowserConnection {
     const previous = this.browsers.get(browserId);
     if (previous && previous.socket !== socket) {
       // A service-worker restart opens a new socket before the old one times out.
       this.browsers.delete(browserId);
       this.unbind(previous);
-      this.failPending(browserId, 'The browser reconnected before answering. Try again.');
+      this.pending.failOwner(browserId, 'The browser reconnected before answering. Try again.');
       previous.socket.close(CLOSE_REPLACED, 'Replaced by a newer connection');
     }
-
     const now = Date.now();
     const connection: BrowserConnection = {
       browserId,
@@ -298,17 +279,6 @@ export class BrowserHub {
     this.browsers.set(browserId, connection);
     this.log(`browser ${browserId} connected (extension ${hello.extensionVersion}, ${hello.agents.length} agents${hello.account ? ', account' : ''})`);
     return connection;
-  }
-
-  private async welcome(connection: BrowserConnection): Promise<void> {
-    const account = connection.credential ? await this.checkAccount(connection) : undefined;
-    if (this.browsers.get(connection.browserId) !== connection) return;
-    this.send(connection.socket, {
-      type: 'welcome',
-      browserId: connection.browserId,
-      mcpUrl: this.options.mcpUrl,
-      ...(account ? { account } : {}),
-    });
   }
 
   private async checkAccount(connection: BrowserConnection): Promise<{ status: AccountStatus; name?: string }> {
@@ -357,34 +327,8 @@ export class BrowserHub {
     if (set && set.size === 0) this.byAccount.delete(accountId);
   }
 
-  private dispatch(
-    browser: BrowserConnection,
-    call: Pick<CallMessage, 'tool' | 'args' | 'tokenHash' | 'account'>
-  ): Promise<ToolResult> {
-    const id = randomUUID();
-    return new Promise<ToolResult>((resolve) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        resolve(errorResult(`The browser did not answer within ${Math.round(this.callTimeoutMs / 1000)}s.`));
-      }, this.callTimeoutMs);
-      this.pending.set(id, { browserId: browser.browserId, resolve, timer });
-      this.send(browser.socket, { type: 'call', id, ...call });
-    });
-  }
-
-  private settle(id: string, browserId: string | null, result: ToolResult): void {
-    const call = this.pending.get(id);
-    // A browser may only answer calls that were sent to it.
-    if (!call || (browserId !== null && call.browserId !== browserId)) return;
-    clearTimeout(call.timer);
-    this.pending.delete(id);
-    call.resolve(result);
-  }
-
-  private failPending(browserId: string, message: string): void {
-    for (const [id, call] of this.pending) {
-      if (call.browserId === browserId) this.settle(id, browserId, errorResult(message));
-    }
+  private dispatch(browser: BrowserConnection, call: Pick<CallMessage, 'tool' | 'args' | 'tokenHash' | 'account'>): Promise<ToolResult> {
+    return this.pending.start(browser.browserId, (id) => this.send(browser.socket, { type: 'call', id, ...call }));
   }
 
   private tick(): void {
@@ -396,9 +340,7 @@ export class BrowserHub {
       }
       browser.alive = false;
       browser.socket.ping();
-      if (browser.credential && !browser.checking && now - browser.verifiedAt >= this.reverifyMs) {
-        void this.recheck(browser);
-      }
+      if (browser.credential && !browser.checking && now - browser.verifiedAt >= this.reverifyMs) void this.recheck(browser);
     }
   }
 
@@ -406,9 +348,7 @@ export class BrowserHub {
     const wasBound = Boolean(browser.account);
     const result = await this.checkAccount(browser);
     if (this.browsers.get(browser.browserId) !== browser) return;
-    if (result.status === 'invalid' || (result.status === 'ok' && !wasBound)) {
-      this.send(browser.socket, { type: 'account', ...result });
-    }
+    if (result.status === 'invalid' || (result.status === 'ok' && !wasBound)) this.send(browser.socket, { type: 'account', ...result });
   }
 
   private send(socket: WebSocket, message: RelayMessage): void {

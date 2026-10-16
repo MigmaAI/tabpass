@@ -2,8 +2,8 @@ import { randomBytes } from 'node:crypto';
 
 import { WebSocket } from 'ws';
 
-import { PROTOCOL_VERSION, type AccountCredential, type AgentAccess, type CallMessage, type RelayMessage } from '../src/protocol.js';
-import { browserIdFromKey, hashSecret } from '../src/tokens.js';
+import { PROTOCOL_VERSION, type AccountCredential, type AgentAccess, type CallMessage, type RelayMessage } from '../src/core/protocol.js';
+import { browserIdFromKey, hashSecret } from '../src/core/tokens.js';
 
 export interface FakeAgent {
   token: string;
@@ -12,9 +12,9 @@ export interface FakeAgent {
   access: AgentAccess;
 }
 
-export function makeAgent(browserKey: string, label: string, access: AgentAccess): FakeAgent {
+export async function makeAgent(browserKey: string, label: string, access: AgentAccess): Promise<FakeAgent> {
   const secret = randomBytes(32).toString('base64url');
-  return { token: `tp_${browserIdFromKey(browserKey)}.${secret}`, tokenHash: hashSecret(secret), label, access };
+  return { token: `tp_${await browserIdFromKey(browserKey)}.${secret}`, tokenHash: await hashSecret(secret), label, access };
 }
 
 /** Stands in for the Chrome extension's service worker. */
@@ -58,7 +58,7 @@ export class FakeExtension {
     return first;
   }
 
-  get browserId(): string {
+  browserId(): Promise<string> {
     return browserIdFromKey(this.browserKey);
   }
 
@@ -87,8 +87,15 @@ export class FakeExtension {
 
   close(): Promise<void> {
     return new Promise((resolve) => {
-      if (this.socket.readyState === WebSocket.CLOSED) return resolve();
-      this.socket.once('close', () => resolve());
+      if (!this.socket || this.socket.readyState === WebSocket.CLOSED) return resolve();
+      const timer = setTimeout(() => {
+        this.socket.terminate();
+        resolve();
+      }, 2000);
+      this.socket.once('close', () => {
+        clearTimeout(timer);
+        resolve();
+      });
       this.socket.close();
     });
   }

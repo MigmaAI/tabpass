@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Relay tests and store build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: yarn
+          cache-dependency-path: |
+            relay/yarn.lock
+            extension/yarn.lock
+
+      - name: Relay (install, test, typecheck)
+        run: yarn --cwd relay install --frozen-lockfile && yarn --cwd relay test && yarn --cwd relay typecheck
+
+      - name: Extension (install, store build)
+        run: yarn --cwd extension install --frozen-lockfile && yarn --cwd extension build
+
+      - name: Check the build is ready for the Chrome Web Store
+        run: node scripts/package.mjs --check
+
+  e2e:
+    name: End-to-end (real Chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: yarn
+          cache-dependency-path: |
+            relay/yarn.lock
+            extension/yarn.lock
+            e2e/yarn.lock
+
+      # e2e/run.mjs imports the relay from relay/dist, so it has to be built first.
+      - name: Relay (install, build)
+        run: yarn --cwd relay install --frozen-lockfile && yarn --cwd relay build
+
+      - name: Extension (install, dev build)
+        run: yarn --cwd extension install --frozen-lockfile && yarn --cwd extension build:dev
+
+      - name: E2E dependencies
+        run: yarn --cwd e2e install --frozen-lockfile
+
+      - name: Install Chromium for Playwright
+        working-directory: e2e
+        run: npx playwright install --with-deps chromium
+
+      - name: Run end-to-end test
+        working-directory: e2e
+        env:
+          SCREENSHOT_DIR: ${{ runner.temp }}/e2e-screenshots
+        run: |
+          # Use Playwright's own Chromium; a CHROMIUM_PATH from the environment would override it.
+          unset CHROMIUM_PATH
+          mkdir -p "$SCREENSHOT_DIR"
+          xvfb-run -a node run.mjs
+
+      - name: Keep screenshots when the run fails
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-screenshots
+          path: ${{ runner.temp }}/e2e-screenshots
+          if-no-files-found: ignore
+          retention-days: 7

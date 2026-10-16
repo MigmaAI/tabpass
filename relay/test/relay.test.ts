@@ -4,10 +4,10 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { PROTOCOL_VERSION } from '../src/protocol.js';
-import { createRelayServer, type RelayServer } from '../src/server.js';
-import { browserIdFromKey } from '../src/tokens.js';
-import { BROWSER_TOOLS } from '../src/tools.js';
+import { PROTOCOL_VERSION } from '../src/core/protocol.js';
+import { createRelayServer, type RelayServer } from '../src/node/server.js';
+import { browserIdFromKey } from '../src/core/tokens.js';
+import { BROWSER_TOOLS } from '../src/core/tools.js';
 
 import { FakeExtension, makeAgent, type FakeAgent } from './helpers.js';
 
@@ -46,10 +46,10 @@ describe('relay', () => {
     relay.close();
   });
 
-  async function startExtension(agents: (key: string) => FakeAgent[]): Promise<{ extension: FakeExtension; agents: FakeAgent[] }> {
+  async function startExtension(agents: (key: string) => Promise<FakeAgent[]> | FakeAgent[]): Promise<{ extension: FakeExtension; agents: FakeAgent[] }> {
     const extension = new FakeExtension();
     extensions.push(extension);
-    const created = agents(extension.browserKey);
+    const created = await agents(extension.browserKey);
     await extension.connect(wsUrl, created);
     return { extension, agents: created };
   }
@@ -66,13 +66,13 @@ describe('relay', () => {
     const welcome = await extension.connect(wsUrl, []);
     expect(welcome).toEqual({
       type: 'welcome',
-      browserId: browserIdFromKey(extension.browserKey),
+      browserId: await browserIdFromKey(extension.browserKey),
       mcpUrl: 'https://tabs.example.com/mcp',
     });
   });
 
   it('forwards tool calls to the browser that owns the token and returns its result', async () => {
-    const { extension, agents } = await startExtension((key) => [makeAgent(key, 'Claude', 'control')]);
+    const { extension, agents } = await startExtension(async (key) => [await makeAgent(key, 'Claude', 'control')]);
     const agent = agents[0]!;
     const mcp = await client(`${base}/mcp`, agent.token);
 
@@ -90,7 +90,7 @@ describe('relay', () => {
   });
 
   it('passes screenshots through as image content', async () => {
-    const { extension, agents } = await startExtension((key) => [makeAgent(key, 'Claude', 'read')]);
+    const { extension, agents } = await startExtension(async (key) => [await makeAgent(key, 'Claude', 'read')]);
     extension.onCall = (call): void =>
       extension.send({
         type: 'result',
@@ -103,22 +103,22 @@ describe('relay', () => {
   });
 
   it('shows read-only agents only the read tools', async () => {
-    const { agents } = await startExtension((key) => [makeAgent(key, 'Migma', 'read')]);
+    const { agents } = await startExtension(async (key) => [await makeAgent(key, 'Migma', 'read')]);
     const mcp = await client(`${base}/mcp`, agents[0]!.token);
     const names = (await mcp.listTools()).tools.map((tool) => tool.name);
     expect(names.sort()).toEqual(['extract_design', 'get_selection', 'list_tabs', 'read_page', 'screenshot', 'wait_for']);
   });
 
   it('accepts the token in the URL path for connector UIs that only take a URL', async () => {
-    const { agents } = await startExtension((key) => [makeAgent(key, 'ChatGPT', 'read')]);
+    const { agents } = await startExtension(async (key) => [await makeAgent(key, 'ChatGPT', 'read')]);
     const mcp = await client(`${base}/mcp/${agents[0]!.token}`);
     expect(textOf(await mcp.callTool({ name: 'list_tabs', arguments: {} }))).toBe('ok:list_tabs');
   });
 
   it('rejects a token the browser did not register', async () => {
-    const { extension } = await startExtension((key) => [makeAgent(key, 'Claude', 'control')]);
-    const stranger = makeAgent(extension.browserKey, 'Stranger', 'control');
-    await expect(connectClient(`${base}/mcp`, stranger.token)).rejects.toThrow(/401|not connected/);
+    const { extension } = await startExtension(async (key) => [await makeAgent(key, 'Claude', 'control')]);
+    const stranger = await makeAgent(extension.browserKey, 'Stranger', 'control');
+    await expect(connectClient(`${base}/mcp`, stranger.token)).rejects.toThrow(/401|was removed/);
   });
 
   it('rejects requests without a well-formed token', async () => {
@@ -136,7 +136,7 @@ describe('relay', () => {
 
   it('answers "browser offline" when the browser is not connected', async () => {
     const browserKey = randomBytes(32).toString('base64url');
-    const agent = makeAgent(browserKey, 'Claude', 'control');
+    const agent = await makeAgent(browserKey, 'Claude', 'control');
     const mcp = await client(`${base}/mcp`, agent.token);
     const result = await mcp.callTool({ name: 'list_tabs', arguments: {} });
     expect(result.isError).toBe(true);
@@ -144,28 +144,28 @@ describe('relay', () => {
   });
 
   it('stops serving an agent once the browser removes it', async () => {
-    const { extension, agents } = await startExtension((key) => [makeAgent(key, 'Claude', 'control')]);
+    const { extension, agents } = await startExtension(async (key) => [await makeAgent(key, 'Claude', 'control')]);
     const agent = agents[0]!;
     const mcp = await client(`${base}/mcp`, agent.token);
     expect(textOf(await mcp.callTool({ name: 'list_tabs', arguments: {} }))).toBe('ok:list_tabs');
 
     extension.send({ type: 'agents', agents: [] });
     await new Promise((resolve) => setTimeout(resolve, 50));
-    await expect(mcp.callTool({ name: 'list_tabs', arguments: {} })).rejects.toThrow(/401|not connected/);
+    await expect(mcp.callTool({ name: 'list_tabs', arguments: {} })).rejects.toThrow(/401|was removed/);
   });
 
   it('times out when the browser never answers', async () => {
-    const { extension, agents } = await startExtension((key) => [makeAgent(key, 'Claude', 'control')]);
+    const { extension, agents } = await startExtension(async (key) => [await makeAgent(key, 'Claude', 'control')]);
     extension.onCall = (): void => undefined;
     const mcp = await client(`${base}/mcp`, agents[0]!.token);
     const result = await mcp.callTool({ name: 'list_tabs', arguments: {} });
     expect(result.isError).toBe(true);
     expect(textOf(result)).toMatch(/did not answer/);
-    expect(relay.hub.stats().pendingCalls).toBe(0);
+    expect((await relay.directory.stats()).pendingCalls).toBe(0);
   });
 
   it('fails the pending call when the browser disconnects', async () => {
-    const { extension, agents } = await startExtension((key) => [makeAgent(key, 'Claude', 'control')]);
+    const { extension, agents } = await startExtension(async (key) => [await makeAgent(key, 'Claude', 'control')]);
     extension.onCall = (): void => {
       extension.socket.close();
     };
@@ -176,7 +176,7 @@ describe('relay', () => {
   });
 
   it('ignores results a browser sends for calls it was never given', async () => {
-    const victim = await startExtension((key) => [makeAgent(key, 'Claude', 'control')]);
+    const victim = await startExtension(async (key) => [await makeAgent(key, 'Claude', 'control')]);
     const attacker = await startExtension(() => []);
     victim.extension.onCall = (call): void => {
       attacker.extension.reply(call.id, 'spoofed');
@@ -187,7 +187,7 @@ describe('relay', () => {
   });
 
   it('routes calls to the newest connection after a reconnect', async () => {
-    const { extension, agents } = await startExtension((key) => [makeAgent(key, 'Claude', 'control')]);
+    const { extension, agents } = await startExtension(async (key) => [await makeAgent(key, 'Claude', 'control')]);
     const second = new FakeExtension();
     Object.defineProperty(second, 'browserKey', { value: extension.browserKey });
     extensions.push(second);
@@ -196,7 +196,7 @@ describe('relay', () => {
 
     const mcp = await client(`${base}/mcp`, agents[0]!.token);
     expect(textOf(await mcp.callTool({ name: 'list_tabs', arguments: {} }))).toBe('from-second');
-    expect(relay.hub.stats().browsers).toBe(1);
+    expect((await relay.directory.stats()).browsers).toBe(1);
   });
 
   it('closes connections that speak another protocol version', async () => {
@@ -208,7 +208,7 @@ describe('relay', () => {
   });
 
   it('validates tool arguments before they reach the browser', async () => {
-    const { extension, agents } = await startExtension((key) => [makeAgent(key, 'Claude', 'control')]);
+    const { extension, agents } = await startExtension(async (key) => [await makeAgent(key, 'Claude', 'control')]);
     const mcp = await client(`${base}/mcp`, agents[0]!.token);
     const result = await mcp.callTool({ name: 'open_tab', arguments: { url: 'not a url' } });
     expect(result.isError).toBe(true);

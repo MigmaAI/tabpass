@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { base64url, constantTimeEqual, sha256, sha256Hex } from './crypto.js';
 
 /**
  * Token scheme (no database on the relay):
@@ -13,17 +13,14 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 export const TOKEN_PREFIX = 'tp_';
 const BROWSER_ID_LENGTH = 16;
 const TOKEN_PATTERN = /^tp_([A-Za-z0-9_-]{16})\.([A-Za-z0-9_-]{43})$/;
+export const BROWSER_ID_PATTERN = /^[A-Za-z0-9_-]{16}$/;
 
-function base64url(buffer: Buffer): string {
-  return buffer.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+export async function browserIdFromKey(browserKey: string): Promise<string> {
+  return base64url(await sha256(browserKey)).slice(0, BROWSER_ID_LENGTH);
 }
 
-export function browserIdFromKey(browserKey: string): string {
-  return base64url(createHash('sha256').update(browserKey).digest()).slice(0, BROWSER_ID_LENGTH);
-}
-
-export function hashSecret(secret: string): string {
-  return createHash('sha256').update(secret).digest('hex');
+export function hashSecret(secret: string): Promise<string> {
+  return sha256Hex(secret);
 }
 
 export interface ParsedAgentToken {
@@ -31,16 +28,14 @@ export interface ParsedAgentToken {
   tokenHash: string;
 }
 
-export function parseAgentToken(token: string): ParsedAgentToken | null {
+export async function parseAgentToken(token: string): Promise<ParsedAgentToken | null> {
   const match = TOKEN_PATTERN.exec(token.trim());
   if (!match || !match[1] || !match[2]) return null;
-  return { browserId: match[1], tokenHash: hashSecret(match[2]) };
+  return { browserId: match[1], tokenHash: await hashSecret(match[2]) };
 }
 
 export function hashesEqual(a: string, b: string): boolean {
-  const left = Buffer.from(a, 'hex');
-  const right = Buffer.from(b, 'hex');
-  return left.length === right.length && timingSafeEqual(left, right);
+  return constantTimeEqual(a, b);
 }
 
 /** Keeps tokens out of logs: `tp_AbCd…` */

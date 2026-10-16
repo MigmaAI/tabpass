@@ -1,17 +1,24 @@
-export { runAccountTool } from './account-tools.js';
-export { httpAccountVerifier, type AccountVerifier, type BrowserAccount, type HttpAccountVerifierOptions, type PresentingBrowser } from './accounts.js';
+// Library entry (Node). The Cloudflare Worker entry is src/worker/index.ts.
+export { runAccountTool } from './core/account-tools.js';
+export { httpAccountVerifier, type AccountVerifier, type BrowserAccount, type HttpAccountVerifierOptions, type PresentingBrowser } from './core/accounts.js';
+export { createRelayApp, type RelayApp, type RelayAppOptions } from './core/app.js';
+export { Sealer } from './core/crypto.js';
 export {
-  BrowserHub,
+  chooseBrowser,
   errorResult,
+  MESSAGES,
+  PendingCalls,
   type AccountBrowser,
   type AccountCallOptions,
   type AgentLookup,
-  type BrowserHubOptions,
-} from './browser-hub.js';
-export { createBrowserMcpServer, registerBrowserTools, serveMcp, SERVER_NAME, SERVER_VERSION } from './mcp-handler.js';
-export * from './protocol.js';
-export { createRelay, createRelayServer, type Relay, type RelayOptions, type RelayServer } from './server.js';
-export { browserIdFromKey, hashSecret, parseAgentToken, TOKEN_PREFIX, type ParsedAgentToken } from './tokens.js';
+  type BrowserDirectory,
+  type DirectoryStats,
+} from './core/directory.js';
+export { llmsTxt } from './core/info.js';
+export { createTokenMcpServer, registerBrowserTools, serveMcp, SERVER_NAME, SERVER_VERSION } from './core/mcp.js';
+export { describeRedirect, isAllowedRedirect, OAuthServer } from './core/oauth.js';
+export * from './core/protocol.js';
+export { browserIdFromKey, hashSecret, parseAgentToken, TOKEN_PREFIX, type ParsedAgentToken } from './core/tokens.js';
 export {
   ACCOUNT_INSTRUCTIONS,
   accountTools,
@@ -21,4 +28,6 @@ export {
   SERVER_INSTRUCTIONS,
   toolsForAccess,
   type BrowserToolDefinition,
-} from './tools.js';
+} from './core/tools.js';
+export { MemoryDirectory, type MemoryDirectoryOptions } from './node/memory-directory.js';
+export { createRelay, createRelayServer, type Relay, type RelayOptions, type RelayServer } from './node/server.js';
