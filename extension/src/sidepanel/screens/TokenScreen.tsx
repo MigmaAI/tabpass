@@ -32,7 +32,8 @@ function TokenScreen({ onChange }: { onChange: () => void }) {
   return (
     <>
       <NavBar title="Link with a key" back={{ label: backLabel, onClick: pop }} />
-      <form onSubmit={submit} className="grid gap-6 px-4 pt-2 pb-8">
+      <form onSubmit={submit} className="grid gap-6 px-4 pt-4 pb-8">
+        <div className="grid gap-1 px-1"><h2 className="text-[23px] leading-7 font-semibold tracking-[-0.04em]">Name this connection.</h2><p className="text-[12px] text-muted-foreground">You can remove it instantly from the home screen.</p></div>
         <ListSection title="Name" footer={error ? <span className="text-destructive">{error}</span> : 'So you know which tool it is.'}>
           <input
             id="agent-name"
@@ -42,7 +43,7 @@ function TokenScreen({ onChange }: { onChange: () => void }) {
             maxLength={40}
             autoFocus
             autoComplete="off"
-            className="h-11 w-full bg-transparent px-4 text-[15px] outline-none placeholder:text-muted-foreground"
+            className="field-surface h-12 w-full rounded-xl px-3 text-[14px] outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/70"
           />
         </ListSection>
         <div className="-mt-3 flex flex-wrap gap-1.5 px-1">

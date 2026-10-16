@@ -15,6 +15,15 @@ const CLIENT_ICONS: Partial<Record<string, { src: string; background: string; cl
   windsurf: { src: '/icons/clients/windsurf.svg', background: '#111827' },
   'copilot-cli': { src: '/icons/clients/copilot.svg', background: '#fff', className: 'p-[5px]' },
   vscode: { src: '/icons/clients/vscode.svg', background: '#fff', className: 'p-1' },
+  zed: { src: '/icons/clients/zed.svg', background: '#f2f1eb', className: 'p-[6px]' },
+  cline: { src: '/icons/clients/cline.svg', background: '#eee7f7', className: 'p-[6px]' },
+  goose: { src: '/icons/clients/goose.svg', background: '#efedeb', className: 'p-[5px]' },
+  'lm-studio': { src: '/icons/clients/lmstudio.svg', background: '#eeeef8', className: 'p-[5px]' },
+  opencode: { src: '/icons/clients/opencode.svg', background: '#f1f0ea', className: 'p-[6px]' },
+  warp: { src: '/icons/clients/warp.svg', background: '#e7eef6', className: 'p-[6px]' },
+  perplexity: { src: '/icons/clients/perplexity.svg', background: '#efedeb', className: 'p-[6px]' },
+  'le-chat': { src: '/icons/clients/mistral.svg', background: '#fff3dc', className: 'p-[5px]' },
+  jetbrains: { src: '/icons/clients/jetbrains.svg', background: '#eee9f4', className: 'p-[6px]' },
 };
 
 function KindIcon({ kind }: { kind: ClientKind }) {

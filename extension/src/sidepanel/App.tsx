@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useTabpassState, type TabpassState } from '@/lib/api';
@@ -62,16 +62,17 @@ function renderScreen(route: Route, state: TabpassState, refresh: () => void) {
   }
 }
 
-/** The side panel: an iOS-style navigation stack over the live state from the service worker. */
+/** A navigation stack over live state, with focus following the screen the person opens. */
 function App() {
   const { state, refresh } = useTabpassState();
   const [stack, setStack] = useState<Route[]>([{ name: 'home' }]);
   const [direction, setDirection] = useState<'push' | 'pop'>('push');
+  const screen = useRef<HTMLDivElement>(null);
+  const focusedRoute = useRef<Route | null>(null);
 
   const push = useCallback((route: Route) => {
     setDirection('push');
     setStack((current) => [...current, route]);
-    window.scrollTo({ top: 0 });
   }, []);
   const pop = useCallback(() => {
     setDirection('pop');
@@ -83,17 +84,26 @@ function App() {
   }, []);
 
   const route = stack[stack.length - 1]!;
+  useEffect(() => {
+    if (focusedRoute.current === route) return;
+    const heading = screen.current?.querySelector('h1');
+    if (!heading) return;
+    focusedRoute.current = route;
+    heading.tabIndex = -1;
+    heading.focus({ preventScroll: true });
+    window.scrollTo({ top: 0 });
+  }, [route, state]);
   const below = stack[stack.length - 2];
   const navigation = useMemo<Navigation>(
     () => ({ push, pop, replace, backLabel: below && state ? titleOf(below, state) : 'Back' }),
     [push, pop, replace, below, state]
   );
-  if (!state) return null;
+  if (!state) return <p className="px-5 py-8 text-sm text-muted-foreground" role="status">Opening Tabpass…</p>;
 
   return (
     <TooltipProvider>
       <NavigationContext.Provider value={navigation}>
-        <div key={`${stack.length}-${route.name}`} className={stack.length > 1 || direction === 'pop' ? (direction === 'push' ? 'screen-push' : 'screen-pop') : undefined}>
+        <div ref={screen} key={`${stack.length}-${route.name}`} className={stack.length > 1 || direction === 'pop' ? (direction === 'push' ? 'screen-push' : 'screen-pop') : undefined}>
           {renderScreen(route, state, refresh)}
         </div>
       </NavigationContext.Provider>

@@ -239,21 +239,23 @@ const FONT = `-apple-system, BlinkMacSystemFont, 'SF Pro Display', Inter, 'Segoe
 
 /** A browser window: the site on the left, the side panel on the right, a prompt window on top. */
 function frame({ caption, page, panel, prompt, promptLeft = 310, dark = false }) {
-  const bg = dark ? '#000' : '#f2f2f7';
-  const ink = dark ? '#f5f5f7' : '#1c1c1e';
+  const bg = dark ? '#211f21' : '#faf9f7';
+  const ink = dark ? '#faf9f7' : '#292629';
+  const frame = dark ? '#292629' : '#f2f0ed';
+  const line = dark ? 'rgba(250,249,247,.18)' : 'rgba(41,38,41,.14)';
   return `<!doctype html><html><head><style>
     *{box-sizing:border-box;margin:0}
     body{width:1280px;height:800px;background:${bg};font-family:${FONT};color:${ink};overflow:hidden}
-    h1{position:absolute;top:44px;left:0;right:0;text-align:center;font-size:40px;font-weight:700;letter-spacing:-.02em}
-    .window{position:absolute;left:70px;top:132px;width:1140px;height:640px;border-radius:14px;overflow:hidden;background:${dark ? '#2c2c2e' : '#e5e5ea'};
-      box-shadow:0 0 0 1px rgba(0,0,0,${dark ? '.6' : '.08'}),0 24px 60px rgba(0,0,0,${dark ? '.5' : '.12'})}
-    .bar{height:36px;display:flex;align-items:center;gap:8px;padding:0 16px}
-    .bar i{width:12px;height:12px;border-radius:50%;background:${dark ? '#48484a' : '#c7c7cc'}}
+    h1{position:absolute;top:42px;left:0;right:0;text-align:center;font-size:40px;font-weight:750;letter-spacing:-.03em}
+    .window{position:absolute;left:70px;top:132px;width:1140px;height:640px;border:1px solid ${line};border-radius:18px;overflow:hidden;background:${frame};
+      box-shadow:0 16px 30px rgba(39,43,36,${dark ? '.28' : '.12'})}
+    .bar{height:36px;display:flex;align-items:center;gap:8px;padding:0 16px;background:${dark ? '#292629' : '#f2f0ed'};border-bottom:1px solid ${line}}
+    .bar i{width:10px;height:10px;border-radius:50%;background:#777276}
     .content{position:absolute;top:36px;left:0;right:0;bottom:0;display:flex}
     .page{flex:1;background:#fff url(${page}) top left/760px auto no-repeat}
-    .panel{width:380px;flex:none;background:url(${panel}) top left/380px auto no-repeat;border-left:1px solid rgba(0,0,0,.12)}
+    .panel{width:380px;flex:none;background:url(${panel}) top left/380px auto no-repeat;border-left:1px solid ${line}}
     .prompt{position:absolute;top:168px;left:${promptLeft}px;width:420px;height:580px;border-radius:12px;overflow:hidden;
-      background:url(${prompt}) top center/420px auto no-repeat;box-shadow:0 0 0 1px rgba(0,0,0,.12),0 30px 80px rgba(0,0,0,.28)}
+      background:url(${prompt}) top center/420px auto no-repeat;border:1px solid rgba(41,38,41,.2);box-shadow:0 18px 36px rgba(41,38,41,.18)}
   </style></head><body>
     <h1>${caption}</h1>
     <div class="window"><div class="bar"><i></i><i></i><i></i></div>
@@ -264,11 +266,11 @@ function frame({ caption, page, panel, prompt, promptLeft = 310, dark = false })
 
 function tile({ width, height }) {
   return `<!doctype html><html><head><style>
-    *{margin:0}body{width:${width}px;height:${height}px;background:#18181b;color:#fafafa;font-family:${FONT};
-      display:flex;align-items:center;justify-content:center;gap:${height / 10}px}
-    img{width:${height * 0.38}px;height:${height * 0.38}px;border-radius:${height * 0.085}px;box-shadow:0 0 0 1px rgba(255,255,255,.12)}
-    h1{font-size:${height * 0.16}px;font-weight:700;letter-spacing:-.02em}
-    p{font-size:${height * 0.075}px;color:#a1a1aa;margin-top:${height * 0.02}px}
+    *{box-sizing:border-box;margin:0}body{width:${width}px;height:${height}px;background:#faf9f7;color:#292629;font-family:${FONT};
+      display:flex;align-items:center;justify-content:center;gap:${height * 0.1}px;padding:0 ${height * 0.08}px}
+    img{width:${height * 0.34}px;height:${height * 0.34}px;border-radius:${height * 0.075}px;background:#f7e5df;border:1px solid #cb593f}
+    h1{font-size:${height * 0.13}px;font-weight:750;line-height:1;letter-spacing:-.035em}
+    p{font-size:${height * 0.06}px;font-weight:550;color:#777276;line-height:1.2;margin-top:${height * 0.025}px;letter-spacing:-.01em}
   </style></head><body><img src="${icon}"><div><h1>Tabpass</h1><p>Your AI, your open tabs.</p></div></body></html>`;
 }
 

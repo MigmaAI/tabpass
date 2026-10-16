@@ -30,12 +30,13 @@ function BrowserScreen({ state, onChange }: { state: TabpassState; onChange: () 
       setError(failure instanceof Error ? failure.message : String(failure));
     }
   };
-  const field = 'h-11 min-w-0 flex-1 bg-transparent px-4 text-[15px] outline-none placeholder:text-muted-foreground';
+  const field = 'field-surface h-12 min-w-0 flex-1 rounded-xl px-3 text-[14px] outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/70';
 
   return (
     <>
       <NavBar title="This browser" back={{ label: backLabel, onClick: pop }} />
-      <div className="grid gap-6 px-4 pt-2 pb-8">
+      <div className="grid gap-6 px-4 pt-4 pb-8">
+        <div className="grid gap-1 px-1"><h2 className="text-[23px] leading-7 font-semibold tracking-[-0.04em]">This browser, clearly identified.</h2><p className="text-[12px] leading-[17px] text-muted-foreground">Name it for your AI tools and choose how it stays reachable.</p></div>
         <form onSubmit={save('setBrowserName', { browserName: name })}>
           <ListSection title="Name" footer="Agents use it to pick between your browsers.">
             <div className="flex items-center pr-2">

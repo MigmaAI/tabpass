@@ -1,4 +1,4 @@
-import { KeyRoundIcon } from 'lucide-react';
+import { ChevronDownIcon, KeyRoundIcon } from 'lucide-react';
 
 import { CopyRow } from '@/components/ios/CopyRow';
 import { IconTile } from '@/components/ios/IconTile';
@@ -40,19 +40,26 @@ function ConnectScreen({ state }: { state: TabpassState }) {
   return (
     <>
       <NavBar title="Connect an AI tool" back={{ label: backLabel, onClick: pop }} />
-      <div className="grid gap-6 px-4 pt-2 pb-8">
-        <ListSection
-          title="One link for every tool"
-          footer={
-            isLocalRelay(state.mcpUrl)
-              ? 'This relay runs on this computer, so tools that work from the cloud (Claude, ChatGPT) cannot reach it.'
-              : 'Paste it wherever a tool asks for an MCP server or connector. You approve it here the first time.'
-          }
-        >
+      <div className="grid gap-6 px-4 pt-4 pb-8">
+        <div className="grid gap-2 px-1">
+          <h2 className="font-serif text-[28px] leading-8 tracking-[-0.03em]">One link. Any AI.</h2>
+          <p className="text-[13px] leading-[18px] text-muted-foreground">Copy the link or choose a tool below.</p>
+        </div>
+        <div className="grid min-w-0 gap-2">
           <CopyRow value={state.mcpUrl} label="Tabpass link" />
-        </ListSection>
+          <p className="px-1 text-[12px] leading-[17px] text-muted-foreground">
+            {isLocalRelay(state.mcpUrl)
+              ? 'This relay runs on this computer, so tools that work from the cloud (Claude, ChatGPT) cannot reach it.'
+              : 'Paste it wherever a tool asks for an MCP server or connector. You approve it here the first time.'}
+          </p>
+        </div>
         <ListSection title="Popular">{tools.slice(0, POPULAR).map(row)}</ListSection>
-        <ListSection title="More tools">{tools.slice(POPULAR).map(row)}</ListSection>
+        <details className="group min-w-0">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between rounded-lg px-1 text-[13px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring/70 [&::-webkit-details-marker]:hidden">
+            More tools <ChevronDownIcon className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
+          </summary>
+          <div className="pt-2">{tools.slice(POPULAR).map(row)}</div>
+        </details>
         <ListSection title="Without sign-in" footer="For tools that cannot sign in. The link carries a key, so keep it private.">
           <ListRow
             icon={

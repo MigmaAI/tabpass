@@ -3,150 +3,95 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/*
- * Tabpass look: iOS structure (grouped inset lists, large titles, push navigation, sheets) with
- * Codex's restraint (monochrome actions, quiet chrome, one accent spent on meaning).
- * The shadcn/ui variable names are kept, so the shadcn primitives (Switch, AlertDialog, Input…)
- * pick the palette up as they are.
- */
 :root {
-  --radius: 0.75rem;
-  --background: #f2f2f7; /* iOS grouped background */
-  --foreground: #1c1c1e;
+  --radius: 0.875rem;
+  --background: #faf9f7;
+  --foreground: #292629;
   --card: #ffffff;
-  --card-foreground: #1c1c1e;
+  --card-foreground: #292629;
   --popover: #ffffff;
-  --popover-foreground: #1c1c1e;
-  --primary: #1c1c1e; /* Codex: actions are ink, not color */
+  --popover-foreground: #292629;
+  --primary: #292629;
   --primary-foreground: #ffffff;
-  --secondary: rgba(120, 120, 128, 0.12);
-  --secondary-foreground: #1c1c1e;
-  --muted: rgba(120, 120, 128, 0.12);
-  --muted-foreground: rgba(60, 60, 67, 0.62);
-  --accent: rgba(120, 120, 128, 0.12);
-  --accent-foreground: #1c1c1e;
-  --destructive: #ff3b30;
-  --border: rgba(60, 60, 67, 0.16);
-  --input: rgba(60, 60, 67, 0.2);
-  --ring: #0a84ff;
-  --tint: #0a84ff;
-  --success: #34c759;
-  --warning: #ff9f0a;
-  --separator: rgba(60, 60, 67, 0.16);
-  --pressed: rgba(120, 120, 128, 0.16);
+  --secondary: #efedeb;
+  --secondary-foreground: #292629;
+  --muted: #f0eeec;
+  --muted-foreground: #716c70;
+  --accent: #f7e5df;
+  --accent-foreground: #793723;
+  --destructive: #b53131;
+  --border: #e4dfdc;
+  --input: #d8d1cd;
+  --ring: #cb593f;
+  --tint: #b74d36;
+  --success: #625b64;
+  --warning: #a66a20;
+  --separator: #ece6e2;
+  --pressed: #eee4df;
 }
 
 .dark {
-  --background: #000000;
-  --foreground: #f5f5f7;
-  --card: #1c1c1e;
-  --card-foreground: #f5f5f7;
-  --popover: #2c2c2e;
-  --popover-foreground: #f5f5f7;
-  --primary: #f5f5f7;
-  --primary-foreground: #111113;
-  --secondary: rgba(118, 118, 128, 0.24);
-  --secondary-foreground: #f5f5f7;
-  --muted: rgba(118, 118, 128, 0.24);
-  --muted-foreground: rgba(235, 235, 245, 0.6);
-  --accent: rgba(118, 118, 128, 0.24);
-  --accent-foreground: #f5f5f7;
-  --destructive: #ff453a;
-  --border: rgba(84, 84, 88, 0.6);
-  --input: rgba(84, 84, 88, 0.7);
-  --ring: #0a84ff;
-  --tint: #0a84ff;
-  --success: #30d158;
-  --warning: #ff9f0a;
-  --separator: rgba(84, 84, 88, 0.6);
-  --pressed: rgba(118, 118, 128, 0.32);
+  --background: #211f21;
+  --foreground: #f8f5f2;
+  --card: #2a272a;
+  --card-foreground: #f8f5f2;
+  --popover: #302c30;
+  --popover-foreground: #f8f5f2;
+  --primary: #f5efeb;
+  --primary-foreground: #292629;
+  --secondary: #3a3438;
+  --secondary-foreground: #f8f5f2;
+  --muted: #342f33;
+  --muted-foreground: #bcb3ba;
+  --accent: #4a302b;
+  --accent-foreground: #ffe3d7;
+  --destructive: #ff9089;
+  --border: #4b4248;
+  --input: #5c5058;
+  --ring: #ed9a82;
+  --tint: #f09a80;
+  --success: #c6bec7;
+  --warning: #e0b677;
+  --separator: #433b40;
+  --pressed: #4c3b3b;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-  --color-tint: var(--tint);
-  --color-success: var(--success);
-  --color-warning: var(--warning);
-  --color-separator: var(--separator);
-  --color-pressed: var(--pressed);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', Inter, 'Segoe UI', Roboto, sans-serif;
+  --color-background: var(--background); --color-foreground: var(--foreground);
+  --color-card: var(--card); --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover); --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary); --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary); --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted); --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent); --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive); --color-border: var(--border); --color-input: var(--input);
+  --color-ring: var(--ring); --color-tint: var(--tint); --color-success: var(--success);
+  --color-warning: var(--warning); --color-separator: var(--separator); --color-pressed: var(--pressed);
+  --radius-sm: calc(var(--radius) - 5px); --radius-md: calc(var(--radius) - 3px);
+  --radius-lg: var(--radius); --radius-xl: calc(var(--radius) + 5px);
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', Inter, 'Segoe UI', sans-serif;
   --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, monospace;
-  --ease-ios: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-ios: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @layer base {
-  * {
-    @apply border-border outline-ring/50;
-  }
-  body {
-    @apply bg-background font-sans text-foreground antialiased;
-  }
-  button {
-    cursor: pointer;
-  }
+  * { @apply border-border outline-ring/50; }
+  html { background: var(--background); }
+  body { @apply bg-background font-sans text-foreground antialiased; min-width: 300px; min-height: 100vh; letter-spacing: -0.006em; }
+  button { cursor: pointer; }
+  button, input { -webkit-tap-highlight-color: transparent; }
+  ::selection { background: var(--accent); color: var(--accent-foreground); }
 }
 
-/* Chrome injects body { font-size: 75% } into extension pages as a page stylesheet, which beats
-   anything inside @layer. The design expects the 16px default, so reset it outside the layers. */
-html body {
-  font-size: 1rem;
-}
+html body { font-size: 1rem; }
 
-/* Push navigation, iOS-style: the new screen slides in from the trailing edge. */
-@keyframes screen-in {
-  from {
-    transform: translateX(32%);
-    opacity: 0;
-  }
-  to {
-    transform: none;
-    opacity: 1;
-  }
-}
-
-@keyframes screen-back {
-  from {
-    transform: translateX(-12%);
-    opacity: 0;
-  }
-  to {
-    transform: none;
-    opacity: 1;
-  }
-}
-
-.screen-push {
-  animation: screen-in 320ms var(--ease-ios) both;
-}
-
-.screen-pop {
-  animation: screen-back 280ms var(--ease-ios) both;
-}
+@keyframes screen-in { from { transform: translateX(16px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes screen-back { from { transform: translateX(-10px); opacity: 0; } to { transform: none; opacity: 1; } }
+.screen-push { animation: screen-in 260ms var(--ease-ios) both; }
+.screen-pop { animation: screen-back 230ms var(--ease-ios) both; }
+.field-surface { background: color-mix(in srgb, var(--card) 80%, transparent); box-shadow: inset 0 0 0 1px var(--border); }
 
 @media (prefers-reduced-motion: reduce) {
-  .screen-push,
-  .screen-pop {
-    animation: none;
-  }
+  .screen-push, .screen-pop { animation: none; }
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }

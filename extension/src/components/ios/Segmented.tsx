@@ -17,17 +17,16 @@ function Segmented<T extends string>({ value, options, onChange, label, classNam
       value={value}
       onValueChange={(next) => onChange(next as T)}
       aria-label={label}
-      className={cn('grid auto-cols-fr grid-flow-col gap-0.5 rounded-[9px] bg-secondary p-0.5', className)}
+      className={cn('grid auto-cols-fr grid-flow-col gap-1 rounded-xl border border-border bg-secondary/75 p-1', className)}
     >
       {options.map((option) => (
         <RadioGroupPrimitive.Item
           key={option.value}
           value={option.value}
           className={cn(
-            'h-8 rounded-[7px] px-2 text-[13px] font-medium text-foreground transition outline-none',
+            'min-h-9 rounded-lg px-2 text-[12px] font-semibold text-muted-foreground transition outline-none',
             'focus-visible:ring-2 focus-visible:ring-ring/60',
-            'data-[state=checked]:bg-card data-[state=checked]:shadow-[0_1px_3px_rgba(0,0,0,0.12),0_0_0_0.5px_rgba(0,0,0,0.04)]',
-            'dark:data-[state=checked]:bg-[#636366]'
+            'data-[state=checked]:bg-card data-[state=checked]:text-foreground data-[state=checked]:shadow-[0_2px_8px_rgba(41,38,41,0.09)]'
           )}
         >
           {option.label}

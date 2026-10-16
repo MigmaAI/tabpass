@@ -7,10 +7,9 @@ import { chromium } from 'playwright';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SVG = `<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
-  <rect width="128" height="128" rx="28" fill="#18181b"/>
-  <path d="M22 44a8 8 0 0 1 8-8h24a8 8 0 0 1 6.9 4l5.2 9H98a8 8 0 0 1 8 8v39a8 8 0 0 1-8 8H30a8 8 0 0 1-8-8Z"
-    fill="none" stroke="#fafafa" stroke-width="9" stroke-linejoin="round"/>
-  <circle cx="64" cy="76" r="11" fill="#3b82f6"/>
+  <rect width="128" height="128" rx="28" fill="#cb593f"/>
+  <rect x="28" y="25" width="52" height="61" rx="9" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="8"/>
+  <rect x="48" y="43" width="52" height="61" rx="9" fill="#cb593f" stroke="#fff" stroke-width="8"/>
 </svg>`;
 
 const browser = await chromium.launch();
