@@ -36,7 +36,7 @@ You can clear the activity list in the side panel. Removing Tabpass deletes all 
 **When an agent you connected calls a tool.** Tabpass sends the result to the relay, which passes it to that agent:
 
 - **List tabs:** the titles and addresses of your open tabs and the names of tab groups. Tabs on sites you blocked are not shown. This does not ask you first.
-- **On a site you allowed** (Tabpass asks the first time): the page's text, links and tables; the values shown in form fields (password fields are always hidden); the text you highlighted; a screenshot of the visible part of the tab; and the page's colors, fonts and image addresses. With "Read and act", the agent can also click, type and scroll there.
+- **On a site you allowed** (Tabpass asks the first time): the page's text, links and tables; cleaned visible HTML structure without scripts, hidden fields or form values; the values shown in form fields (password fields are always hidden); the text you highlighted; a screenshot of the visible part of the tab; and the page's colors, fonts and image addresses. With "Read and act", the agent can also click, type and scroll there.
 - Every answer includes the page's title and address.
 
 Nothing is sent for a site you blocked, declined or did not answer.

@@ -12,6 +12,12 @@ const CONTROL_TOOLS = new Set([
   'open_tab', 'navigate', 'activate_tab', 'close_tabs', 'group_tabs', 'click', 'type', 'press_key', 'scroll',
 ]);
 const OPENABLE_URL = /^(https?:|file:)/i;
+const MAX_CAPTURE_QUEUE = 6;
+const CAPTURE_INTERVAL_MS = 550;
+
+let captureQueue = Promise.resolve();
+let captureQueueSize = 0;
+let lastCaptureStartedAt = 0;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -83,10 +89,72 @@ async function listTabs(agent, { window = 'all' }) {
       lines.push(`- [${tab.id}] ${tab.title || '(untitled)'} — ${urlOf(tab)}${flags.length ? ` (${flags.join(', ')})` : ''}`);
     }
   }
-  return text(lines.length ? lines.join('\n') : 'No open windows.');
+  const reminder = 'Tab metadata only. To use what a page says or shows, call read_page for its tabId.';
+  return text(`${reminder}\n${lines.length ? lines.join('\n') : 'No open windows.'}`);
 }
 
-async function readPage(agent, { tabId, interactive = false, maxChars = 40000 }) {
+function enqueueCapture(capture) {
+  if (captureQueueSize >= MAX_CAPTURE_QUEUE) {
+    throw new ToolError('Screenshot queue is full. Wait for an earlier capture to finish, then try again.');
+  }
+  captureQueueSize += 1;
+  const queued = captureQueue.then(async () => {
+    return capture();
+  });
+  captureQueue = queued.then(
+    () => undefined,
+    () => undefined
+  );
+  return queued.finally(() => {
+    captureQueueSize -= 1;
+  });
+}
+
+async function captureScreenshot(tab, format, expectedUrl) {
+  return enqueueCapture(async () => {
+    const currentTab = await chrome.tabs.get(tab.id).catch(() => null);
+    if (!currentTab) throw new ToolError('The tab was closed before it could be captured.');
+    if (urlOf(currentTab) !== expectedUrl) {
+      throw new ToolError('Screenshot unavailable because the page navigated after it was read.');
+    }
+    const win = await chrome.windows.get(currentTab.windowId);
+    if (win.state === 'minimized') throw new ToolError('That window is minimized, so Chrome cannot capture it.');
+
+    let restoreTabId = null;
+    if (!currentTab.active) {
+      const [activeTab] = await chrome.tabs.query({ active: true, windowId: currentTab.windowId });
+      restoreTabId = activeTab?.id ?? null;
+      await chrome.tabs.update(currentTab.id, { active: true });
+      await sleep(400);
+    }
+    let dataUrl;
+    try {
+      const remaining = CAPTURE_INTERVAL_MS - (Date.now() - lastCaptureStartedAt);
+      if (remaining > 0) await sleep(remaining);
+      const captureTab = await chrome.tabs.get(currentTab.id).catch(() => null);
+      if (!captureTab?.active || urlOf(captureTab) !== expectedUrl) {
+        throw new ToolError('Screenshot unavailable because the page navigated after it was read or the active tab changed.');
+      }
+      lastCaptureStartedAt = Date.now();
+      dataUrl = await chrome.tabs.captureVisibleTab(currentTab.windowId, { format, quality: 70 });
+      const capturedTab = await chrome.tabs.get(currentTab.id).catch(() => null);
+      if (!capturedTab?.active || urlOf(capturedTab) !== expectedUrl) {
+        throw new ToolError('Screenshot unavailable because the page or active tab changed during capture.');
+      }
+    } finally {
+      if (restoreTabId !== null) await chrome.tabs.update(restoreTabId, { active: true }).catch(() => undefined);
+    }
+    const match = /^data:(image\/[a-z]+);base64,(.+)$/.exec(dataUrl);
+    if (!match) throw new ToolError('Chrome returned an empty screenshot.');
+    return {
+      image: { type: 'image', data: match[2], mimeType: match[1] },
+      title: currentTab.title,
+      url: expectedUrl,
+    };
+  });
+}
+
+async function readPage(agent, { tabId, interactive = false, includeVisuals = false, includeHtml = false, maxChars = 40000 }) {
   const tab = await pageTab(agent, tabId);
   const header = (lines) => [UNTRUSTED, '', ...lines.filter(Boolean)].join('\n');
 
@@ -94,6 +162,20 @@ async function readPage(agent, { tabId, interactive = false, maxChars = 40000 })
     const special = await readWithSiteReader(tab.id, urlOf(tab));
     if (special) {
       const truncated = special.text.length > maxChars;
+      if (includeVisuals || includeHtml) {
+        const current = await chrome.tabs.get(tab.id).catch(() => null);
+        if (!current || urlOf(current) !== urlOf(tab)) throw new ToolError('The page changed while it was being read. Read the current tab again.');
+        const structure = includeHtml ? await callPage(tab.id, 'readPage', { maxChars: 1000, includeHtml: true }) : {};
+        if (includeHtml && structure.url !== urlOf(tab)) throw new ToolError('The page changed while its HTML was being read. Read the current tab again.');
+        return pageEvidence(tab, {
+          title: tab.title || '',
+          url: urlOf(tab),
+          text: special.text.slice(0, maxChars),
+          truncated,
+          html: structure.html,
+          htmlTruncated: structure.htmlTruncated,
+        }, includeVisuals);
+      }
       return text(
         `${header([`Title: ${tab.title}`, `URL: ${urlOf(tab)}`, `Source: ${special.kind}`])}\n\n` +
           `${special.text.slice(0, maxChars)}${truncated ? '\n\n[truncated: raise maxChars to read more]' : ''}`
@@ -101,7 +183,19 @@ async function readPage(agent, { tabId, interactive = false, maxChars = 40000 })
     }
   }
 
-  const page = await callPage(tab.id, 'readPage', { maxChars, interactive });
+  const page = await callPage(tab.id, 'readPage', { maxChars, interactive, includeHtml });
+  if (includeVisuals || includeHtml) {
+    return pageEvidence(tab, {
+      title: page.title || tab.title || '',
+      description: page.description,
+      url: page.url || urlOf(tab),
+      text: page.text || '',
+      truncated: Boolean(page.truncated),
+      html: page.html,
+      htmlTruncated: page.htmlTruncated,
+      ...(interactive ? { elements: page.elements, elementsTotal: page.elementsTotal } : {}),
+    }, includeVisuals);
+  }
   let output = `${header([
     `Title: ${page.title}`,
     `URL: ${page.url}`,
@@ -116,6 +210,43 @@ async function readPage(agent, { tabId, interactive = false, maxChars = 40000 })
   return text(output);
 }
 
+async function pageEvidence(tab, facts, includeVisuals) {
+  // Page permissions were granted for this URL. A navigation must not turn
+  // the extra design read into access to a different, unapproved page.
+  const currentTab = await chrome.tabs.get(tab.id).catch(() => null);
+  if (!currentTab || facts.url !== urlOf(tab) || urlOf(currentTab) !== facts.url) {
+    throw new ToolError('The page changed while it was being read. Read the current tab again.');
+  }
+  const envelope = {
+    kind: 'tabpass.page',
+    version: 1,
+    tabId: tab.id,
+    url: facts.url,
+    title: facts.title,
+    ...(facts.description ? { description: facts.description } : {}),
+    text: facts.text,
+    truncated: facts.truncated,
+    ...(facts.html !== undefined ? { html: facts.html, htmlTruncated: facts.htmlTruncated } : {}),
+    ...(facts.elements ? { elements: facts.elements, elementsTotal: facts.elementsTotal } : {}),
+  };
+  let image;
+  const visualErrors = [];
+  if (includeVisuals) try {
+    const design = await callPage(tab.id, 'extractDesign');
+    if (design.url !== facts.url) throw new ToolError('The page changed before design details were read.');
+    envelope.design = design;
+  } catch (error) {
+    visualErrors.push(`Design unavailable: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (includeVisuals) try {
+    image = (await captureScreenshot(tab, 'jpeg', facts.url)).image;
+  } catch (error) {
+    visualErrors.push(`Screenshot unavailable: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (visualErrors.length) envelope.visualError = visualErrors.join(' ');
+  return { content: [{ type: 'text', text: JSON.stringify(envelope) }, ...(image ? [image] : [])] };
+}
+
 async function getSelection(agent, { tabId }) {
   const tab = await pageTab(agent, tabId);
   const page = await callPage(tab.id, 'selection');
@@ -125,28 +256,11 @@ async function getSelection(agent, { tabId }) {
 
 async function screenshot(agent, { tabId, format = 'jpeg' }) {
   const tab = await pageTab(agent, tabId);
-  const win = await chrome.windows.get(tab.windowId);
-  if (win.state === 'minimized') throw new ToolError('That window is minimized, so Chrome cannot capture it.');
-
-  let restoreTabId = null;
-  if (!tab.active) {
-    const [current] = await chrome.tabs.query({ active: true, windowId: tab.windowId });
-    restoreTabId = current?.id ?? null;
-    await chrome.tabs.update(tab.id, { active: true });
-    await sleep(400);
-  }
-  let dataUrl;
-  try {
-    dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format, quality: 70 });
-  } finally {
-    if (restoreTabId !== null) await chrome.tabs.update(restoreTabId, { active: true }).catch(() => undefined);
-  }
-  const match = /^data:(image\/[a-z]+);base64,(.+)$/.exec(dataUrl);
-  if (!match) throw new ToolError('Chrome returned an empty screenshot.');
+  const capture = await captureScreenshot(tab, format, urlOf(tab));
   return {
     content: [
-      { type: 'image', data: match[2], mimeType: match[1] },
-      { type: 'text', text: `Visible part of "${tab.title}" — ${urlOf(tab)}` },
+      capture.image,
+      { type: 'text', text: `Visible part of "${capture.title}" — ${capture.url}` },
     ],
   };
 }

@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "node run.mjs",
+    "test:page-agent": "node page-agent.test.mjs",
     "icons": "node make-icons.mjs",
     "store-assets": "node store-assets.mjs"
   },

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Display Contents Product</title>
+    <style>
+      body { margin: 24px; font: 16px/1.5 sans-serif; }
+      .contents { display: contents; }
+      .gallery { display: grid; grid-template-columns: repeat(5, 120px); gap: 8px; }
+      .gallery img { display: block; width: 120px; height: 160px; object-fit: cover; }
+      .hidden { display: none; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="contents">
+        <div class="contents">
+          <article>
+            <h1>Trail Runner in Glacier Blue</h1>
+            <p>110,00 €</p>
+            <p>Lightweight everyday trainers with a grippy recycled sole and breathable mesh upper.</p>
+            <p>Available in sizes 36 through 46.</p>
+            <div class="gallery">
+              <img src="/products/trail-runner-front.jpg" alt="Trail Runner front view" />
+              <img src="/products/trail-runner-side.jpg" alt="Trail Runner side view" />
+              <img src="/products/trail-runner-back.jpg" alt="Trail Runner back view" />
+              <img src="/products/trail-runner-sole.jpg" alt="Trail Runner sole view" />
+              <img src="/products/trail-runner-detail.jpg" alt="Trail Runner material detail" />
+            </div>
+          </article>
+        </div>
+      </div>
+    </main>
+    <section class="hidden"><p>DISPLAY_NONE_SECRET</p><img src="/products/hidden-display.jpg" alt="Hidden display image" /></section>
+    <section aria-hidden="true"><p>ARIA_HIDDEN_SECRET</p><img src="/products/hidden-aria.jpg" alt="Hidden aria image" /></section>
+    <form>
+      <label for="draft">Private draft</label>
+      <textarea id="draft">TEXTAREA_DRAFT_SECRET</textarea>
+      <div contenteditable="true">EDITABLE_DOCUMENT_TEXT</div>
+    </form>
+  </body>
+</html>
