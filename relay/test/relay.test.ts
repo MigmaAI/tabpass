@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { PROTOCOL_VERSION } from '../src/core/protocol.js';
 import { createRelayServer, type RelayServer } from '../src/node/server.js';
 import { browserIdFromKey } from '../src/core/tokens.js';
-import { BROWSER_TOOLS } from '../src/core/tools.js';
+import { BROWSER_TOOLS, SERVER_INSTRUCTIONS } from '../src/core/tools.js';
 
 import { FakeExtension, makeAgent, type FakeAgent } from './helpers.js';
 
@@ -87,6 +87,17 @@ describe('relay', () => {
       tokenHash: agent.tokenHash,
       args: { tabId: 7, interactive: true },
     });
+  });
+
+  it('requires a page read before using tab content and tells agents to clarify ambiguity', () => {
+    const listTabs = BROWSER_TOOLS.find((tool) => tool.name === 'list_tabs');
+    const readPage = BROWSER_TOOLS.find((tool) => tool.name === 'read_page');
+    expect(listTabs?.description).toContain('does not read page content');
+    expect(listTabs?.description).toContain('call read_page before answering');
+    expect(listTabs?.description).toContain('ask the user instead of guessing');
+    expect(readPage?.description).toContain('Read a tab as clean text');
+    expect(SERVER_INSTRUCTIONS).toContain('Never infer page content from a title or URL');
+    expect(SERVER_INSTRUCTIONS).toContain('ask which tab to use instead of guessing');
   });
 
   it('passes screenshots through as image content', async () => {

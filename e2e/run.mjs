@@ -293,6 +293,65 @@ try {
     assert.match(text, /\| Plan \| Price \|/);
   });
 
+  await step('page evidence includes real pixels, design and bounded clean HTML', async () => {
+    await userTab.evaluate(() => {
+      const fixture = document.createElement('section');
+      fixture.id = 'evidence-test';
+      fixture.setAttribute('data-private', 'APP_STATE_SECRET');
+      fixture.innerHTML = '<h2>Evidence structure</h2><p hidden>HIDDEN_SECRET</p><input type="password" value="PASSWORD_SECRET"><div contenteditable="true">UNSENT_DRAFT_SECRET</div><a href="/second.html" onclick="void(0)">Safe destination</a>';
+      document.body.appendChild(fixture);
+    });
+    const result = await control.callTool({ name: 'read_page', arguments: {
+      tabId: formTabId, includeVisuals: true, includeHtml: true,
+    } });
+    assert.notEqual(result.isError, true, textOf(result));
+    const evidence = JSON.parse(result.content[0].text);
+    assert.equal(evidence.kind, 'tabpass.page');
+    assert.equal(evidence.url, `${siteA}/form.html`);
+    assert.match(evidence.text, /Design forms that convert/);
+    assert.match(evidence.html, /<h1>Design forms that convert<\/h1>/);
+    assert.match(evidence.html, /<h2>Evidence structure<\/h2>/);
+    assert.match(evidence.html, /<table>/);
+    assert.ok(evidence.html.includes(`${siteA}/second.html`));
+    assert.doesNotMatch(evidence.html, /<script|<input|onclick|APP_STATE_SECRET|HIDDEN_SECRET|PASSWORD_SECRET|UNSENT_DRAFT_SECRET/);
+    assert.equal(evidence.design.url, evidence.url);
+    assert.equal(evidence.design.colors.pageBackground, '#fdf6ec');
+    const pixels = result.content.find(item => item.type === 'image');
+    assert.equal(pixels?.mimeType, 'image/jpeg');
+    assert.ok(pixels.data.length > 1000, 'actual Chromium screenshot pixels traverse MCP');
+    await userTab.evaluate(() => {
+      document.getElementById('evidence-test').innerHTML = '<p>Large source fragment</p>'.repeat(900);
+    });
+    const bounded = JSON.parse(textOf(await control.callTool({ name: 'read_page', arguments: { tabId: formTabId, includeHtml: true } })));
+    assert.ok(bounded.html.length <= 12000);
+    assert.equal(bounded.htmlTruncated, true);
+    await userTab.evaluate(() => document.getElementById('evidence-test').remove());
+  });
+
+  await step('display:contents wrappers preserve product evidence and keep HTML free of form values', async () => {
+    const productTab = await context.newPage();
+    await productTab.goto(`${siteA}/display-contents.html`);
+    const tabs = textOf(await control.callTool({ name: 'list_tabs', arguments: {} }));
+    const productTabId = Number(/\[(\d+)\] Display Contents Product/.exec(tabs)?.[1]);
+    assert.ok(Number.isInteger(productTabId), 'the display:contents fixture tab is listed');
+    const result = await control.callTool({ name: 'read_page', arguments: { tabId: productTabId, includeHtml: true } });
+    assert.notEqual(result.isError, true, textOf(result));
+    const evidence = JSON.parse(result.content[0].text);
+    assert.match(evidence.text, /Trail Runner in Glacier Blue/);
+    assert.match(evidence.text, /110,00 €/);
+    assert.match(evidence.text, /Lightweight everyday trainers/);
+    assert.match(evidence.html, /<h1>Trail Runner in Glacier Blue<\/h1>/);
+    for (const photo of ['front', 'side', 'back', 'sole', 'detail']) {
+      assert.ok(evidence.html.includes(`${siteA}/products/trail-runner-${photo}.jpg`), `visible ${photo} image URL is preserved`);
+    }
+    assert.doesNotMatch(evidence.text, /DISPLAY_NONE_SECRET|ARIA_HIDDEN_SECRET/);
+    assert.match(evidence.text, /EDITABLE_DOCUMENT_TEXT/);
+    assert.doesNotMatch(evidence.html, /DISPLAY_NONE_SECRET|ARIA_HIDDEN_SECRET|hidden-display|hidden-aria/);
+    assert.doesNotMatch(evidence.html, /TEXTAREA_DRAFT_SECRET|EDITABLE_DOCUMENT_TEXT|<textarea/);
+    await productTab.close();
+    await userTab.bringToFront();
+  });
+
   await step('refs drive type and click; submit and navigate back work', async () => {
     const text = textOf(await control.callTool({ name: 'read_page', arguments: { tabId: formTabId, interactive: true } }));
     const ref = (pattern) => Number(new RegExp(`\\[ref=(\\d+)\\] ${pattern}`).exec(text)?.[1]);

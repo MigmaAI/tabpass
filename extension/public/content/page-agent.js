@@ -44,6 +44,16 @@
     return rect.width > 0 || rect.height > 0 || el.tagName === 'BODY';
   }
 
+  // Layoutless wrappers still contain rendered content. Keep this separate
+  // from actionable-element visibility: a zero-box wrapper is not clickable.
+  function isReadableContainer(el) {
+    if (isVisible(el)) return true;
+    if (!(el instanceof Element) || el.hidden || el.getAttribute('aria-hidden') === 'true') return false;
+    const style = getComputedStyle(el);
+    return style.display === 'contents' && style.visibility !== 'hidden'
+      && style.visibility !== 'collapse' && style.contentVisibility !== 'hidden';
+  }
+
   function collapse(text) {
     return text.replace(/\s+/g, ' ');
   }
@@ -246,7 +256,7 @@
       if (node.nodeType !== Node.ELEMENT_NODE) return;
       const el = node;
       const tag = el.tagName.toUpperCase();
-      if (SKIP_TAGS.has(tag) || !isVisible(el)) return;
+      if (SKIP_TAGS.has(tag) || !isReadableContainer(el)) return;
 
       const heading = /^H([1-6])$/.exec(tag);
       if (heading) {
@@ -286,7 +296,7 @@
           flush();
           let index = 1;
           for (const child of el.children) {
-            if (child.tagName !== 'LI' || !isVisible(child)) continue;
+            if (child.tagName !== 'LI' || !isReadableContainer(child)) continue;
             const marker = tag === 'OL' ? `${index++}.` : '-';
             const before = lines.length;
             for (const grandchild of child.childNodes) walk(grandchild, listDepth + 1);
@@ -328,10 +338,60 @@
     };
   }
 
-  function readPage({ maxChars = 40000, interactive = false } = {}) {
+  // Structural evidence only. Build an allowlisted representation of visible
+  // DOM instead of cloning live HTML with scripts, state, events or form data.
+  function pageHtml() {
+    const maxChars = 12000;
+    const allowed = new Set('a abbr address article aside b blockquote br button caption center code dd details div dl dt em figcaption figure footer h1 h2 h3 h4 h5 h6 header hr i img li main nav ol p pre section small span strong sub summary sup table tbody td th thead tr ul'.split(' '));
+    const voidTags = new Set(['br', 'hr', 'img']);
+    const pieces = [];
+    let length = 0;
+    let closingChars = 0;
+    let nodes = 0;
+    let truncated = false;
+    const escape = (value) => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const append = (value) => {
+      if (length + value.length + closingChars > maxChars) { truncated = true; return false; }
+      pieces.push(value);
+      length += value.length;
+      return true;
+    };
+    const walk = (node, depth) => {
+      if (truncated) return;
+      if (++nodes > 1500 || depth > 60) { truncated = true; return; }
+      if (node.nodeType === Node.TEXT_NODE) { append(escape(collapse(node.textContent ?? ''))); return; }
+      if (!(node instanceof Element)) return;
+      if (SKIP_TAGS.has(node.tagName) || !isReadableContainer(node) || node.isContentEditable) return;
+      const tag = allowed.has(node.localName) ? node.localName : 'div';
+      const attrs = [];
+      for (const name of ['alt', 'title', 'aria-label', 'role', 'colspan', 'rowspan']) {
+        const value = node.getAttribute(name);
+        if (value) attrs.push(`${name}="${escape(value.slice(0, 300))}"`);
+      }
+      const resource = tag === 'img' ? ['src', node.currentSrc || node.src] : tag === 'a' ? ['href', node.href] : null;
+      if (resource && /^https?:\/\//i.test(resource[1]) && resource[1].length <= 2000) {
+        attrs.push(`${resource[0]}="${escape(resource[1])}"`);
+      }
+      const close = voidTags.has(tag) ? '' : `</${tag}>`;
+      closingChars += close.length;
+      if (!append(`<${tag}${attrs.length ? ` ${attrs.join(' ')}` : ''}>`)) { closingChars -= close.length; return; }
+      if (close) {
+        for (const child of node.childNodes) walk(child, depth + 1);
+        if (node.shadowRoot) for (const child of node.shadowRoot.childNodes) walk(child, depth + 1);
+        closingChars -= close.length;
+        pieces.push(close);
+        length += close.length;
+      }
+    };
+    if (document.body) walk(document.body, 0);
+    return { html: pieces.join(''), htmlTruncated: truncated };
+  }
+
+  function readPage({ maxChars = 40000, interactive = false, includeHtml = false } = {}) {
     const info = pageInfo();
     const { text, truncated } = pageText(maxChars);
     const result = { ...info, text, truncated };
+    if (includeHtml) Object.assign(result, pageHtml());
     if (interactive) {
       const { lines, total } = interactiveElements(250);
       result.elements = lines;
