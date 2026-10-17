@@ -1,6 +1,6 @@
 # Connect any AI tool
 
-Tabpass gives every AI tool **one link**: your relay's MCP address, for example `https://tabs.migma.ai/mcp` (or `http://localhost:8787/mcp` when you run the relay yourself). Add it to the tool as a remote MCP server named `tabpass`. The first time the tool connects, it opens a page in your browser, and you **approve it in Tabpass**. You copy no token.
+Remote MCP clients use **one link**: your relay's MCP address, for example `https://tabs.migma.ai/mcp` (or `http://localhost:8787/mcp` when you run the relay yourself). Add it to the tool as a remote MCP server named `tabpass`. The first time the tool connects, it opens a page in your browser, and you **approve it in Tabpass**. You copy no token. Migma has a dedicated [Connect browser action](#migma).
 
 This works because the relay follows the MCP authorization spec: an unauthenticated request gets `401` with `WWW-Authenticate: Bearer resource_metadata="…"`, the tool reads the protected resource metadata and the authorization server metadata, registers itself (Dynamic Client Registration), and signs in with PKCE. Most tools listed below do this on their own.
 
@@ -11,9 +11,22 @@ Two things to know first:
 - **Cloud tools need a public address.** Claude (web, desktop and phone apps), ChatGPT, Perplexity and Le Chat connect from their own servers, never from your computer, so `localhost` does not work for them. Use an HTTPS relay. Tools on your computer (Claude Code, Codex, Cursor, VS Code and the rest) can use `localhost`.
 - **Menus move.** Paths below were checked in October 2026. Entries marked *Not verified* come from secondary sources; check the tool's docs if a step does not match.
 
-The extension builds the same guides from `extension/src/lib/clients.ts`.
+The extension's MCP client guides come from `extension/src/lib/clients.ts`.
 
 ---
+
+## Migma
+
+1. Install and enable Tabpass in the Chrome profile where you use Migma. Use the default relay, `https://tabs.migma.ai`.
+2. Sign in to Migma and open **Tools and connectors → Connect browser** in a design chat.
+3. Click **Connect browser** in the dialog, then approve in Tabpass's own window. **Read** is the default; you can choose **Read and act**.
+4. Wait for Migma to verify the connection and show Connected. No server URL or key needs copying. Keep **Use connectors** enabled when asking Migma to use your tabs.
+
+This is a personal connection for your live design chats. Other members of a shared brand cannot use it. Page content added to a chat is visible to anyone with access, including public viewers if you share the chat publicly. Tabpass still asks before reading or acting on a new site; listing tab titles and URLs needs no site prompt.
+
+Open the same dialog to reconnect or disconnect. Disconnecting removes Migma's saved credential; it leaves existing chat content and the extension grant in place. You can remove that grant in Tabpass's side panel.
+
+Brand-level custom MCP connectors are separate and follow the brand's permissions. Migma's personal connection uses the [public Web Protocol SDK](../connect/README.md), not the development-only provider-account mode. See the [integration guide](migma-integration.md) for the architecture and security boundaries.
 
 ## Claude (web, desktop and phone)
 
