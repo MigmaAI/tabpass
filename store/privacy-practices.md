@@ -116,10 +116,10 @@ https://migma.ai/tabpass/privacy
 
 ## Test instructions (for reviewers)
 
-The dashboard's **Test instructions > Additional instructions** field allows 500 characters. Paste this 495-character version:
+The dashboard's **Test instructions > Additional instructions** field allows 500 characters. Paste this 489-character version:
 
 ```
-No account needed. Install, open Tabpass, click Got it. Run npx @modelcontextprotocol/inspector. Select Streamable HTTP and https://tabs.migma.ai/mcp; connect, then approve Read in Tabpass. Call list_tabs. Call read_page with a tabId; choose Allow for 10 minutes. Repeat on another site and choose Block this site; verify it disappears from list_tabs. Key-link flow: Connect an AI tool > Make a link with a key. Full steps: https://github.com/MigmaAI/tabpass/blob/main/store/privacy-practices.md
+No account needed. Open Tabpass > Create connection prompt. Keep Read, create it, then open Advanced setup and copy Private server URL. Run npx @modelcontextprotocol/inspector, select Streamable HTTP, paste URL and connect. Call list_tabs, then read_page with a tabId. Approve Allow for 10 minutes. Block another site and verify it disappears from list_tabs. Disconnect in Tabpass and verify access stops. Full steps: https://github.com/MigmaAI/tabpass/blob/main/store/privacy-practices.md
 ```
 
 ### Full reviewer steps
@@ -127,7 +127,7 @@ No account needed. Install, open Tabpass, click Got it. Run npx @modelcontextpro
 ```
 No account is needed.
 1. Install Tabpass and click its toolbar icon. The side panel opens and says "Connected". Click "Got it".
-2. Click "Connect an AI tool", then "Make a link with a key". Type a name (for example "Reviewer"), keep "Read", click "Make the link", and copy it.
+2. Click "Create connection prompt". Type a name (for example "Reviewer"), keep "Read", and click "Create connection prompt". Click "Copy connection prompt" to test the main flow with an AI that can call MCP servers. For the Inspector steps below, expand "Advanced setup" and copy "Private server URL".
 3. In a terminal, run the MCP Inspector: npx @modelcontextprotocol/inspector . Choose "Streamable HTTP", paste the link, and connect.
 4. Call "list_tabs", then "read_page" with a tab id. Tabpass opens a window asking "Allow Reviewer to use <site>?". Choose "Allow for 10 minutes" and the page text comes back.
 5. Call "read_page" on a tab of another site and choose "Block this site": that site disappears from list_tabs and later calls to it are refused.

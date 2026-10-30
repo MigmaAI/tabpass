@@ -91,7 +91,11 @@ const context = await chromium.launchPersistentContext(join(work, 'profile'), {
     `--host-resolver-rules=${[RELAY_HOST, SITE_HOST, CHATGPT_HOST].map((host) => `MAP ${host} 127.0.0.1:${httpsPort}`).join(',')}`,
   ],
 });
-const waitForPage = (fragment) => context.waitForEvent('page', { predicate: (page) => page.url().includes(fragment), timeout: 15000 });
+const waitForPage = async (fragment) => {
+  const page = await context.waitForEvent('page', { timeout: 15000 });
+  await page.waitForURL((url) => url.href.includes(fragment), { timeout: 15000 });
+  return page;
+};
 
 async function shootPrompt(page, name) {
   await page.setViewportSize({ width: 420, height: 600 });
@@ -104,16 +108,15 @@ async function shootPanel(panel, name) {
   await panel.screenshot({ path: join(raw, name) });
 }
 
-/** "Make a link with a key" in the panel, as a person would for a tool without sign-in. */
+/** Create a private prompt, exposing the key only to the local synthetic agent. */
 async function keyLink(panel, name, control) {
-  await panel.getByRole('button', { name: 'Connect an AI tool', exact: true }).click();
-  await panel.getByRole('button', { name: 'Make a link with a key', exact: true }).click();
-  await panel.getByRole('button', { name, exact: true }).click();
+  await panel.getByRole('button', { name: 'Create connection prompt', exact: true }).click();
+  await panel.getByRole('textbox', { name: 'Connection name' }).fill(name);
   if (control) await panel.getByRole('radio', { name: 'Read and act' }).click();
-  await panel.getByRole('button', { name: 'Make the link' }).click();
+  await panel.getByRole('button', { name: 'Create connection prompt', exact: true }).click();
+  await panel.getByText('Advanced setup', { exact: true }).click();
   const link = await panel.locator('code').first().textContent();
   const back = () => panel.locator('header button').first().click();
-  await back();
   await back();
   return decodeURIComponent(new URL(link).pathname.slice('/mcp/'.length));
 }
@@ -180,7 +183,7 @@ try {
   await panel.getByRole('status').getByText('Connected · Work laptop').waitFor({ timeout: 15000 });
   assert.equal(await panel.getByRole('region', { name: 'Migma', exact: true }).count(), 0, 'Store builds must not offer the unfinished Migma connection');
 
-  // Two tools connect with a link; each panel shot shows the moment its prompt belongs to.
+  // Two tools connect with a private prompt; each panel shot shows the moment its prompt belongs to.
   const cursor = await agent(await keyLink(panel, 'Cursor', false));
   const claude = await agent(await keyLink(panel, 'Claude', true));
   clients.push(cursor, claude);
@@ -191,6 +194,7 @@ try {
   await panel.getByText('Claude · list tabs').waitFor();
   await shootPanel(panel, 'home-before-site.png');
 
+  await site.bringToFront();
   const prompted = waitForPage('prompt.html?id=');
   const reading = claude.callTool({ name: 'read_page', arguments: { tabId } });
   const prompt = await prompted;
@@ -210,8 +214,10 @@ try {
   await panel.bringToFront();
   await panel.getByText('ChatGPT · read page').waitFor();
   await shootPanel(panel, 'home.png');
-  await panel.getByRole('button', { name: 'Connect an AI tool', exact: true }).click();
-  await panel.locator('code', { hasText: `https://${RELAY_HOST}/mcp` }).first().waitFor();
+  await panel.getByRole('button', { name: 'Claude', exact: true }).click();
+  await panel.getByRole('button', { name: 'Copy connection prompt', exact: true }).waitFor();
+  assert.equal(await panel.locator('details[open]').count(), 0, 'Private setup must stay collapsed in store screenshots');
+  assert.equal(await panel.locator('code:visible').count(), 0, 'Store screenshots must not expose private connection values');
   await shootPanel(panel, 'connect.png');
   await panel.locator('header button').first().click();
   await panel.emulateMedia({ colorScheme: 'dark' });
@@ -278,11 +284,11 @@ const site = await image('site.png');
 const home = await image('home.png');
 const screens = [
   ['01-home.png', { caption: 'Your AI, your open tabs.', page: site, panel: home }],
-  ['02-connect.png', { caption: 'One link connects any AI tool.', page: site, panel: await image('connect.png') }],
+  ['02-connect.png', { caption: 'Copy a prompt into your AI.', page: site, panel: await image('connect.png') }],
   ['03-approve-sites.png', { caption: 'You approve each new site.', page: site, panel: await image('home-before-site.png'), prompt: await image('prompt-site.png') }],
   // The sign-in page stays in view on the left; Tabpass asks on the right.
   ['04-sign-in.png', {
-    caption: 'Sign in once. You choose what it can do.',
+    caption: 'You choose what your AI can do.',
     page: await image('authorize-page.png'),
     panel: await image('home-before-sign-in.png'),
     prompt: await image('prompt-agent.png'),

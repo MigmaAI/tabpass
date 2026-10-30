@@ -1,4 +1,13 @@
-import type { Access } from './api';
+import type { Access, Agent } from './api';
+
+/** Website/OAuth grants are approved at creation; a copied manual link still needs setup. */
+export function agentConnectionStatus(agent: Agent, paused: boolean): 'Set up' | 'Paused' | 'Connected' | 'Connecting…' | 'Offline' {
+  if (agent.source !== 'web' && agent.source !== 'oauth' && !agent.lastUsedAt) return 'Set up';
+  if (paused) return 'Paused';
+  if (agent.relay.state === 'connected') return 'Connected';
+  if (agent.relay.state === 'connecting') return 'Connecting…';
+  return 'Offline';
+}
 
 export function timeAgo(timestamp: number | null): string {
   if (!timestamp) return 'never';

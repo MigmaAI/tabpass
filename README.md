@@ -1,6 +1,6 @@
 # Tabpass
 
-**Your AI, your open tabs.** Tabpass lets Claude, ChatGPT, Cursor, Codex, Migma or any other MCP client read and use the Chrome tabs you already have open, signed in as you. You approve each new site.
+**Your AI, your open tabs.** Give your AI access to the Chrome tabs you already have open, signed in as you. Copy a private connection prompt into an AI that can call MCP servers or make HTTP requests. You approve each new site.
 
 Open source (MIT), by the [Migma](https://migma.ai) team.
 
@@ -16,17 +16,20 @@ It follows the structure of OpenAI's ChatGPT Chrome extension: a side panel, per
  Website pages ── Tabpass Web Protocol approval ────────► extension/ (Chrome MV3)
 ```
 
-## Connect any AI tool
+## Connect your AI
 
-Remote MCP clients use **one link**: `https://tabs.migma.ai/mcp`. In Migma, use **Connect browser** as described below.
+[Install Tabpass from the Chrome Web Store](https://chromewebstore.google.com/detail/tabpass/dfkcbinlgcemppeealhaicfdljcfnfdp), then:
 
-1. Add the link to your tool as a remote MCP server. In the side panel, **Connect an AI tool** has an **Add** button for Claude, Cursor and VS Code, and short steps for 16 others.
-2. The tool asks you to sign in. Tabpass opens its own window: pick **Read** or **Read and act**, then **Connect**.
-3. The first time the tool wants a site, Tabpass asks: **Always allow**, **Allow for 10 minutes**, **Don't allow** or **Block this site**.
+1. Open Tabpass and click **Create connection prompt**.
+2. Name your connection. Keep **Read** for research, or choose **Read and act** for browser actions.
+3. Click **Create connection prompt**, then **Copy connection prompt**.
+4. Paste it into your AI and say what you need help with.
 
-The relay is an MCP OAuth 2.1 server, so tools register and sign in by themselves (Dynamic Client Registration or Client ID Metadata Documents, PKCE). No token to copy.
+No separate Tabpass account or sign-in is needed. Your AI needs tools that can call remote MCP servers or make HTTP requests. Some apps require connector setup first; **App setup options** has their instructions.
 
-For tools that cannot sign in, **Make a link with a key** gives a link with its own token, as a URL, a header or a config snippet.
+The prompt contains a private access link. Anyone with it has the access you chose. Keep it out of public chats and shared documents; **Disconnect** revokes it. Tabpass still asks before reading or using each new website.
+
+For manual setup, open the connection's **Advanced setup** for its private server URL, header or config. For OAuth, add `https://tabs.migma.ai/mcp` as a remote MCP server and approve in Tabpass's window.
 
 Step-by-step guides: [docs/clients.md](docs/clients.md). Agents that read docs can start at `https://tabs.migma.ai/llms.txt`.
 
@@ -34,8 +37,9 @@ Step-by-step guides: [docs/clients.md](docs/clients.md). Agents that read docs c
 
 | | How | Who it acts as |
 |---|---|---|
+| **Connection prompt** | **Create connection prompt**, then copy and paste into your AI | The name and access you chose |
 | **One URL** (OAuth) | Add `https://tabs.migma.ai/mcp`, approve in Tabpass's window | The tool's name, with the access you picked |
-| **Link with a key** | **Make a link with a key** in the side panel | The name you typed |
+| **Link with a key** | The connection’s **Advanced setup** | The name you typed |
 | **Website** | The site's "Connect your browser" button, then confirm in Tabpass | The site's name; the page passes its token to the site's authenticated backend ([Web Protocol](docs/web-protocol.md), [browser SDK](connect/README.md)) |
 
 In Migma's design chat, open **Tools and connectors → Connect browser**, then approve in Tabpass. Read access is the default. Migma verifies the credential before showing Connected. The connection belongs to the signed-in person and is available in their live design chats; teammates do not inherit it through a shared brand. Page content added to a chat follows that chat's visibility. See [Migma setup](docs/clients.md#migma) and the [integration guide](docs/migma-integration.md).

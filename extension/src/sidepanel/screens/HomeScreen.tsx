@@ -56,6 +56,14 @@ function HomeScreen({ state, onChange }: ScreenProps) {
       {state.prompts.map((prompt) => (
         <SitePromptCard key={prompt.id} prompt={prompt} onChange={onChange} />
       ))}
+      <section className="grid gap-3 px-1" aria-label="Connect your AI">
+        <div className="grid gap-1">
+          <h2 className="text-[18px] font-semibold tracking-[-0.025em]">Connect your AI</h2>
+          <p className="text-[13px] leading-[18px] text-muted-foreground">Copy a private prompt into an AI that can use MCP servers. Let it help with your open tabs, with no Tabpass sign-in.</p>
+        </div>
+        <Pill className="justify-self-stretch" onClick={() => push({ name: 'token' })}>Create connection prompt</Pill>
+      </section>
+
       <Suggestion state={state} onChange={onChange} />
 
       {state.providers.map((provider) => (
@@ -107,10 +115,10 @@ function HomeScreen({ state, onChange }: ScreenProps) {
             label={agent.label}
           />
         ))}
-          {state.agents.length === 0 && <div className="px-3 py-3 text-[12px] leading-[17px] text-muted-foreground">Claude, ChatGPT, Cursor, Codex and any other MCP tool can connect.</div>}
+          {state.agents.length === 0 && <div className="px-3 py-3 text-[12px] leading-[17px] text-muted-foreground">Connect an AI that supports MCP servers. Some apps need setup in settings first.</div>}
         </div>
-        <Pill className="w-full px-4" onClick={() => push({ name: 'connect' })}>
-          <PlusIcon />Connect an AI tool
+        <Pill variant="secondary" className="w-full px-4" onClick={() => push({ name: 'connect' })}>
+          <PlusIcon />App setup options
         </Pill>
       </section>
 
