@@ -25,11 +25,11 @@ function titleOf(route: Route, state: TabpassState): string {
     case 'provider':
       return state.providers.find((provider) => provider.id === route.id)?.name ?? 'Back';
     case 'connect':
-      return 'Connect';
+      return 'Connect your AI';
     case 'tool':
       return CLIENTS.find((client) => client.id === route.id)?.name ?? 'Back';
     case 'token':
-      return 'Link';
+      return 'Connection prompt';
     case 'sites':
       return 'Sites';
     case 'activity':

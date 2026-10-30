@@ -1,10 +1,12 @@
 # Connect any AI tool
 
-Remote MCP clients use **one link**: your relay's MCP address, for example `https://tabs.migma.ai/mcp` (or `http://localhost:8787/mcp` when you run the relay yourself). Add it to the tool as a remote MCP server named `tabpass`. The first time the tool connects, it opens a page in your browser, and you **approve it in Tabpass**. You copy no token. Migma has a dedicated [Connect browser action](#migma).
+Start with **Create connection prompt** in Tabpass. Name the connection, choose **Read** or **Read and act**, then copy the prompt and paste it into an AI that can call MCP servers or make HTTP requests. No separate Tabpass sign-in is needed.
 
-This works because the relay follows the MCP authorization spec: an unauthenticated request gets `401` with `WWW-Authenticate: Bearer resource_metadata="…"`, the tool reads the protected resource metadata and the authorization server metadata, registers itself (Dynamic Client Registration), and signs in with PKCE. Most tools listed below do this on their own.
+The prompt carries a private access link. Keep it out of public chats and shared documents. **Disconnect** in Tabpass revokes access. Copying the prompt does not prove your AI connected: check the connection's **Last used** and Tabpass's activity after asking it to list your tabs.
 
-Tools that cannot sign in use a **token agent** instead: in the side panel, open **Connect an AI tool → Make a link with a key** and copy its token link or header (see [Tools without OAuth](#tools-without-oauth)).
+Some apps need connector setup first. **App setup options** in the side panel links to the guides below. For OAuth, add `https://tabs.migma.ai/mcp` as a remote MCP server and approve the connection in Tabpass. Migma has a dedicated [Connect browser action](#migma).
+
+For manual setup, create a connection prompt, then open **Advanced setup** to copy its private server URL, header or config (see [Tools without OAuth](#tools-without-oauth)).
 
 Two things to know first:
 
@@ -282,7 +284,7 @@ Junie reads the same JSON from `~/.junie/mcp/mcp.json`.
 
 ## Tools without OAuth
 
-Make a **token agent** in the side panel (**Connect an AI tool → Make a link with a key**). Its token looks like `tp_<16 chars>.<43 chars>`. Keep it private: it opens your browser. Use it one of three ways.
+Create a connection in the side panel with **Create connection prompt**, then open **Advanced setup**. Its token looks like `tp_<16 chars>.<43 chars>`. Keep it private: it opens your browser. Use it one of three ways.
 
 **1. Header.** Send `Authorization: Bearer tp_…` with the universal URL:
 
