@@ -80,8 +80,11 @@ export function isMetadataUrl(value: string): boolean {
   }
 }
 
+class MetadataUnavailableError extends Error {}
+
 async function fetchMetadata(url: string): Promise<unknown> {
-  const response = await fetch(url, { headers: { Accept: 'application/json' }, redirect: 'error', signal: AbortSignal.timeout(5000) });
+  // Workers do not implement redirect: 'error'. Manual mode still refuses every redirect.
+  const response = await fetch(url, { headers: { Accept: 'application/json' }, redirect: 'manual', signal: AbortSignal.timeout(5000) });
   if (!response.ok) throw new Error(`Client metadata answered ${response.status}`);
   const text = await response.text();
   if (text.length > METADATA_MAX_BYTES) throw new Error('Client metadata is too large');
@@ -169,7 +172,7 @@ async function readForm(request: Request): Promise<Record<string, string>> {
 export class OAuthServer {
   readonly resourceMetadataUrl: string;
   private readonly issuer: string;
-  private readonly metadataCache = new Map<string, { record: ClientRecord | null; at: number }>();
+  private readonly metadataCache = new Map<string, { record: ClientRecord; at: number }>();
 
   constructor(private readonly options: OAuthOptions) {
     this.issuer = options.publicUrl.replace(/\/+$/, '');
@@ -284,17 +287,26 @@ export class OAuthServer {
         record = { r: uris, n: name, t: Math.floor(Date.now() / 1000), k: 'cimd' };
       }
     } catch {
-      record = null;
+      // Failed transport/JSON must not become a ten-minute cached 'unregistered' result.
+      throw new MetadataUnavailableError();
     }
-    if (this.metadataCache.size > 500) this.metadataCache.clear();
-    this.metadataCache.set(url, { record, at: Date.now() });
+    if (record) {
+      if (this.metadataCache.size > 500) this.metadataCache.clear();
+      this.metadataCache.set(url, { record, at: Date.now() });
+    }
     return record;
   }
 
   private async authorize(url: URL): Promise<Response> {
     const nonce = randomToken(16);
     const params = url.searchParams;
-    const client = await this.client(params.get('client_id'));
+    let client: ClientRecord | null;
+    try {
+      client = await this.client(params.get('client_id'));
+    } catch (error) {
+      if (!(error instanceof MetadataUnavailableError)) throw error;
+      return html(renderErrorPage('Tabpass could not check this app right now. Try connecting again.', nonce), 503, nonce);
+    }
     if (!client) return html(renderErrorPage('This app is not registered with Tabpass. Try connecting again from the app.', nonce), 400, nonce);
     const redirectUri = params.get('redirect_uri') ?? (client.r.length === 1 ? client.r[0]! : '');
     if (!client.r.some((registered) => redirectMatches(registered, redirectUri))) {
