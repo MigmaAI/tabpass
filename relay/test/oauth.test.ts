@@ -4,7 +4,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { UnauthorizedError, type OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
 import type { OAuthClientInformationMixed, OAuthClientMetadata, OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createRelayServer, type RelayServer } from '../src/node/server.js';
 
@@ -305,7 +305,7 @@ describe('OAuth: Client ID Metadata Documents', () => {
   it('refuses a document that names another client, an unlisted redirect, or an unsafe URL', async () => {
     expect((await authorize('https://evil.example.com/meta', 'https://evil.example.com/cb')).status).toBe(400);
     expect((await authorize(CLIENT, 'https://evil.example.com/cb')).status).toBe(400);
-    expect((await authorize('https://unknown.example.com/meta', 'https://claude.ai/api/mcp/auth_callback')).status).toBe(400);
+    expect((await authorize('https://unknown.example.com/meta', 'https://claude.ai/api/mcp/auth_callback')).status).toBe(503);
   });
 });
 
@@ -316,5 +316,68 @@ describe('isMetadataUrl', () => {
     for (const bad of ['http://claude.ai/meta', 'https://127.0.0.1/meta', 'https://localhost/meta', 'https://[::1]/meta', 'https://intranet/meta', 'https://claude.ai/', 'https://u:p@claude.ai/meta']) {
       expect(isMetadataUrl(bad), bad).toBe(false);
     }
+  });
+});
+
+
+describe('OAuth metadata transport', () => {
+  const clientId = 'https://client.example/oauth/metadata';
+  const redirectUri = 'https://client.example/oauth/callback';
+  const document = { client_id: clientId, client_name: 'Example', redirect_uris: [redirectUri] };
+  let relay: RelayServer;
+  const getPage = () => {
+    const url = new URL('https://relay.example/authorize');
+    url.search = new URLSearchParams({ response_type: 'code', client_id: clientId, redirect_uri: redirectUri,
+      code_challenge: 'A'.repeat(43), code_challenge_method: 'S256' }).toString();
+    return relay.app.fetch(new Request(url));
+  };
+
+  beforeEach(() => { relay = createRelayServer({ publicUrl: 'https://relay.example', secret: SECRET }); });
+  afterEach(() => { relay.close(); vi.unstubAllGlobals(); });
+
+  it('uses Worker-supported manual redirects and caches a valid document', async () => {
+    const fetcher = vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.redirect === 'error') throw new TypeError('Workers do not implement redirect error');
+      return Response.json(document);
+    });
+    vi.stubGlobal('fetch', fetcher);
+    expect((await getPage()).status).toBe(200);
+    expect((await getPage()).status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher).toHaveBeenCalledWith(clientId, expect.objectContaining({ redirect: 'manual', headers: { Accept: 'application/json' } }));
+  });
+
+  it.each([302, 307, 403, 500])('refuses HTTP %s without following or caching it', async status => {
+    const fetcher = vi.fn().mockResolvedValueOnce(new Response(null, { status, headers: { Location: 'https://other.example/private' } }))
+      .mockResolvedValueOnce(Response.json(document));
+    vi.stubGlobal('fetch', fetcher);
+    const failed = await getPage();
+    expect(failed.status).toBe(503);
+    expect(await failed.text()).not.toContain('not registered');
+    expect((await getPage()).status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries immediately after timeout or malformed JSON', async () => {
+    const fetcher = vi.fn().mockRejectedValueOnce(new DOMException('Timeout', 'TimeoutError'))
+      .mockResolvedValueOnce(new Response('not-json'))
+      .mockResolvedValueOnce(Response.json(document));
+    vi.stubGlobal('fetch', fetcher);
+    expect((await getPage()).status).toBe(503);
+    expect((await getPage()).status).toBe(503);
+    expect((await getPage()).status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(3);
+  });
+
+  it('keeps document identity, redirect validation and size guards', async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce(Response.json({ ...document, client_id: 'https://other.example/meta' }))
+      .mockResolvedValueOnce(Response.json({ ...document, redirect_uris: ['http://remote.example/callback'] }))
+      .mockResolvedValueOnce(new Response(' '.repeat(10001)))
+      .mockResolvedValueOnce(Response.json(document));
+    vi.stubGlobal('fetch', fetcher);
+    expect((await getPage()).status).toBe(400);
+    expect((await getPage()).status).toBe(400);
+    expect((await getPage()).status).toBe(503);
+    expect((await getPage()).status).toBe(200);
   });
 });
