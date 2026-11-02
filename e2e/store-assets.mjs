@@ -9,6 +9,11 @@
 //
 // Writes store/images/: five 1280x800 screenshots, the 440x280 small tile and the 1400x560 marquee.
 // RAW_DIR=/some/dir also keeps the raw shots.
+// STORE_SITE_SCREENSHOT=/absolute/path/site.png uses an existing, approved browser capture
+// as the visual background. The local fixture still owns the simulated approval flow.
+// Such frames are illustrative composites, not evidence of access to the pictured live site.
+// STORE_BROWSER_SCREENSHOT=/absolute/path/chrome.png replaces 02 with an actual browser
+// capture, fitted unchanged onto a neutral 1280x800 canvas without a simulated frame.
 
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -110,10 +115,11 @@ async function shootPanel(panel, name) {
 
 /** Create a private prompt, exposing the key only to the local synthetic agent. */
 async function keyLink(panel, name, control) {
-  await panel.getByRole('button', { name: 'Create connection prompt', exact: true }).click();
+  await panel.getByRole('button', { name: 'Connect your AI', exact: true }).click();
+  await panel.getByText('Name this connection', { exact: true }).click();
   await panel.getByRole('textbox', { name: 'Connection name' }).fill(name);
   if (control) await panel.getByRole('radio', { name: 'Read and act' }).click();
-  await panel.getByRole('button', { name: 'Create connection prompt', exact: true }).click();
+  await panel.getByRole('button', { name: 'Continue', exact: true }).click();
   await panel.getByText('Advanced setup', { exact: true }).click();
   const link = await panel.locator('code').first().textContent();
   const back = () => panel.locator('header button').first().click();
@@ -191,7 +197,7 @@ try {
   const tabs = textOf(await claude.callTool({ name: 'list_tabs', arguments: {} }));
   const tabId = Number(/\[(\d+)\] Northwind Studio/.exec(tabs)?.[1]);
   assert.ok(tabId, tabs);
-  await panel.getByText('Claude · list tabs').waitFor();
+  await panel.getByRole('button', { name: /^Connections 2$/ }).waitFor();
   await shootPanel(panel, 'home-before-site.png');
 
   await site.bringToFront();
@@ -203,7 +209,7 @@ try {
   await prompt.getByRole('button', { name: 'Always allow', exact: true }).click();
   assert.match(textOf(await reading), /Made slowly, by hand/);
   await claude.callTool({ name: 'extract_design', arguments: { tabId } });
-  await panel.getByText('Claude · extract design').waitFor();
+  await panel.getByRole('button', { name: /^Connections 2$/ }).waitFor();
   await shootPanel(panel, 'home-before-sign-in.png');
 
   // ChatGPT uses the one URL and signs in.
@@ -212,10 +218,11 @@ try {
   await chatgpt.callTool({ name: 'read_page', arguments: { tabId } });
 
   await panel.bringToFront();
-  await panel.getByText('ChatGPT · read page').waitFor();
+  await panel.getByRole('button', { name: /^Connections 3$/ }).waitFor();
   await shootPanel(panel, 'home.png');
+  await panel.getByRole('button', { name: /^Connections/ }).click();
   await panel.getByRole('button', { name: 'Claude', exact: true }).click();
-  await panel.getByRole('button', { name: 'Copy connection prompt', exact: true }).waitFor();
+  await panel.getByRole('button', { name: 'Copy prompt', exact: true }).waitFor();
   assert.equal(await panel.locator('details[open]').count(), 0, 'Private setup must stay collapsed in store screenshots');
   assert.equal(await panel.locator('code:visible').count(), 0, 'Store screenshots must not expose private connection values');
   await shootPanel(panel, 'connect.png');
@@ -280,12 +287,15 @@ function tile({ width, height }) {
   </style></head><body><img src="${icon}"><div><h1>Tabpass</h1><p>Your AI, your open tabs.</p></div></body></html>`;
 }
 
-const site = await image('site.png');
+const fixture = await image('site.png');
+const site = process.env.STORE_SITE_SCREENSHOT
+  ? `data:image/png;base64,${(await readFile(process.env.STORE_SITE_SCREENSHOT)).toString('base64')}`
+  : fixture;
 const home = await image('home.png');
 const screens = [
   ['01-home.png', { caption: 'Your AI, your open tabs.', page: site, panel: home }],
   ['02-connect.png', { caption: 'Copy a prompt into your AI.', page: site, panel: await image('connect.png') }],
-  ['03-approve-sites.png', { caption: 'You approve each new site.', page: site, panel: await image('home-before-site.png'), prompt: await image('prompt-site.png') }],
+  ['03-approve-sites.png', { caption: 'You approve each new site.', page: fixture, panel: await image('home-before-site.png'), prompt: await image('prompt-site.png') }],
   // The sign-in page stays in view on the left; Tabpass asks on the right.
   ['04-sign-in.png', {
     caption: 'You choose what your AI can do.',
@@ -300,7 +310,12 @@ const screens = [
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined });
 const tab = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 for (const [name, options] of screens) {
-  await tab.setContent(frame(options), { waitUntil: 'load' });
+  let content = frame(options);
+  if (name === '02-connect.png' && process.env.STORE_BROWSER_SCREENSHOT) {
+    const capture = `data:image/png;base64,${(await readFile(process.env.STORE_BROWSER_SCREENSHOT)).toString('base64')}`;
+    content = `<!doctype html><html><head><style>*{box-sizing:border-box}body{margin:0;width:1280px;height:800px;background:#faf9f7;display:flex;align-items:center;justify-content:center}img{display:block;max-width:1280px;max-height:800px;width:auto;height:auto}</style></head><body><img src="${capture}" alt="Tabpass in Chrome on a real website"></body></html>`;
+  }
+  await tab.setContent(content, { waitUntil: 'load' });
   await tab.screenshot({ path: join(out, name) });
 }
 for (const [name, width, height] of [

@@ -18,7 +18,7 @@ export interface BrowserDirectory {
   stats(): Promise<DirectoryStats>;
 }
 
-export type AgentLookup = { status: 'ok'; agent: AgentGrant } | { status: 'offline' } | { status: 'invalid' };
+export type AgentLookup = { status: 'ok'; agent: AgentGrant; browser?: { id: string; name: string } } | { status: 'offline' } | { status: 'invalid' };
 
 export interface AccountBrowser {
   browserId: string;
@@ -57,9 +57,12 @@ export function chooseBrowser(browsers: AccountBrowser[], wanted?: string): { br
   const sorted = [...browsers].sort((a, b) => b.lastActiveAt - a.lastActiveAt);
   if (!sorted.length) return { error: MESSAGES.noAccountBrowser };
   if (!wanted) return { browser: sorted[0]! };
+  const exactId = sorted.find((browser) => browser.browserId === wanted);
+  if (exactId) return { browser: exactId };
   const name = wanted.trim().toLowerCase();
-  const found = sorted.find((browser) => browser.browserId === wanted || browser.name.toLowerCase() === name);
-  if (found) return { browser: found };
+  const matches = sorted.filter((browser) => browser.name.toLowerCase() === name);
+  if (matches.length === 1) return { browser: matches[0]! };
+  if (matches.length > 1) return { error: `Several connected browsers are called "${wanted}". Choose a browser ID from list_browsers: ${matches.map((browser) => browser.browserId).join(', ')}.` };
   return { error: `No connected browser called "${wanted}". Connected: ${sorted.map((browser) => browser.name).join(', ')}.` };
 }
 

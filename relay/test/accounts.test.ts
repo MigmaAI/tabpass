@@ -151,11 +151,40 @@ describe('account mode', () => {
     expect(desktop.calls[1]?.args).toEqual({ tabId: 1 }); // `browser` is consumed by the relay
 
     const listed = textOf(await callFor('user_alice', 'list_browsers'));
-    expect(listed).toMatch(/^- Chrome on Mac \(default\): last used/);
-    expect(listed).toMatch(/- Chrome on Windows: last used/);
+    expect(listed).toContain(`- Chrome on Mac (default): id=${await laptop.browserId()}; last used`);
+    expect(listed).toContain(`- Chrome on Windows: id=${await desktop.browserId()}; last used`);
 
     const missing = await callFor('user_alice', 'list_tabs', { browser: 'Firefox' });
     expect(textOf(missing)).toBe('No connected browser called "Firefox". Connected: Chrome on Mac, Chrome on Windows.');
+  });
+
+  it('requires a browser ID when two authorized browsers have the same name', async () => {
+    const first = await browser(provider.issue('user_alice'), 'Work Chrome');
+    const second = await browser(provider.issue('user_alice'), 'Work Chrome');
+    const other = await browser(provider.issue('user_bob'), 'Work Chrome');
+    const ambiguous = await callFor('user_alice', 'list_tabs', { browser: 'work chrome' });
+    expect(ambiguous.isError).toBe(true);
+    expect(textOf(ambiguous)).toContain('Choose a browser ID from list_browsers');
+    expect(textOf(ambiguous)).not.toContain(await other.browserId());
+    expect(first.calls).toHaveLength(0);
+    expect(second.calls).toHaveLength(0);
+
+    const listed = textOf(await callFor('user_alice', 'list_browsers'));
+    expect(listed).toContain(await first.browserId());
+    expect(listed).toContain(await second.browserId());
+    expect(listed).not.toContain(await other.browserId());
+    await callFor('user_alice', 'read_page', { browser: await first.browserId(), tabId: 3 });
+    expect(first.calls[0]).toMatchObject({ tool: 'read_page', args: { tabId: 3 } });
+    expect(second.calls).toHaveLength(0);
+    expect(other.calls).toHaveLength(0);
+  });
+
+  it('prefers an exact browser ID over another browser with that name', async () => {
+    const target = await browser(provider.issue('user_alice'), 'Work Chrome');
+    const namesake = await browser(provider.issue('user_alice'), await target.browserId());
+    await callFor('user_alice', 'list_tabs', { browser: await target.browserId() });
+    expect(target.calls).toHaveLength(1);
+    expect(namesake.calls).toHaveLength(0);
   });
 
   it('revoking a connection cuts it off at once and fails its pending call', async () => {

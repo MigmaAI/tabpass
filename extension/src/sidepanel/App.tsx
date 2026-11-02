@@ -29,13 +29,13 @@ function titleOf(route: Route, state: TabpassState): string {
     case 'tool':
       return CLIENTS.find((client) => client.id === route.id)?.name ?? 'Back';
     case 'token':
-      return 'Connection prompt';
+      return 'Connect your AI';
     case 'sites':
       return 'Sites';
     case 'activity':
       return 'Activity';
     case 'browser':
-      return 'Browser';
+      return 'Settings';
   }
 }
 
@@ -48,7 +48,7 @@ function renderScreen(route: Route, state: TabpassState, refresh: () => void) {
     case 'provider':
       return <ProviderScreen state={state} id={route.id} onChange={refresh} />;
     case 'connect':
-      return <ConnectScreen state={state} />;
+      return <ConnectScreen state={state} onChange={refresh} />;
     case 'tool':
       return <ToolScreen state={state} id={route.id} onChange={refresh} />;
     case 'token':
@@ -98,7 +98,7 @@ function App() {
     () => ({ push, pop, replace, backLabel: below && state ? titleOf(below, state) : 'Back' }),
     [push, pop, replace, below, state]
   );
-  if (!state) return <p className="px-5 py-8 text-sm text-muted-foreground" role="status">Opening Tabpass…</p>;
+  if (!state) return <HomeScreen state={null} onChange={refresh} />;
 
   return (
     <TooltipProvider>

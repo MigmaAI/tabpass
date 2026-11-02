@@ -24,7 +24,7 @@ export async function runAccountTool(
     if (!browsers.length) return errorResult(MESSAGES.noAccountBrowser);
     const lines = browsers
       .sort((a, b) => b.lastActiveAt - a.lastActiveAt)
-      .map((browser, index) => `- ${browser.name}${index === 0 ? ' (default)' : ''}: last used ${ago(browser.lastActiveAt)}`);
+      .map((browser, index) => `- ${browser.name}${index === 0 ? ' (default)' : ''}: id=${browser.browserId}; last used ${ago(browser.lastActiveAt)}`);
     return { content: [{ type: 'text', text: lines.join('\n') }] };
   }
   const { browser, ...rest } = args;

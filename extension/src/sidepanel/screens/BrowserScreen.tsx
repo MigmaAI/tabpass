@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { ListRow, ListSection } from '@/components/ios/List';
 import { NavBar } from '@/components/ios/NavBar';
 import { Pill } from '@/components/ios/Pill';
+import { Toggle } from '@/components/ios/Toggle';
 import { send, type TabpassState } from '@/lib/api';
 import { hostOf } from '@/lib/format';
 
@@ -13,7 +14,7 @@ const REPO = 'https://github.com/migmaai/tabpass';
 
 /** This browser's name, the relay it uses, what it shares, and where the code lives. */
 function BrowserScreen({ state, onChange }: { state: TabpassState; onChange: () => void }) {
-  const { pop, backLabel } = useNavigation();
+  const { push, pop, backLabel } = useNavigation();
   const [name, setName] = useState(state.settings.browserName);
   const [relayUrl, setRelayUrl] = useState(state.settings.relayUrl);
   const [error, setError] = useState<string | null>(null);
@@ -34,9 +35,14 @@ function BrowserScreen({ state, onChange }: { state: TabpassState; onChange: () 
 
   return (
     <>
-      <NavBar title="This browser" back={{ label: backLabel, onClick: pop }} />
+      <NavBar title="Settings" back={{ label: backLabel, onClick: pop }} />
       <div className="grid gap-6 px-4 pt-4 pb-8">
-        <div className="grid gap-1 px-1"><h2 className="text-[23px] leading-7 font-semibold tracking-[-0.04em]">This browser, clearly identified.</h2><p className="text-[12px] leading-[17px] text-muted-foreground">Name it for your AI tools and choose how it stays reachable.</p></div>
+        <ListSection>
+          <ListRow title="Browser access" subtitle={state.settings.paused ? 'Paused for every connection' : 'On for your connections'} trailing={<Toggle checked={!state.settings.paused} onChange={(on) => send('setPaused', { paused: !on }).then(onChange)} label="Let agents use this browser" />} />
+          <ListRow title="Website access" value={state.settings.allowAllSites ? 'All allowed' : `${state.sites.allowed.length} allowed`} onClick={() => push({ name: 'sites' })} />
+          <ListRow title="Activity" onClick={() => push({ name: 'activity' })} />
+          <ListRow title="App setup options" onClick={() => push({ name: 'connect' })} />
+        </ListSection>
         <form onSubmit={save('setBrowserName', { browserName: name })}>
           <ListSection title="Name" footer="Agents use it to pick between your browsers.">
             <div className="flex items-center pr-2">

@@ -140,7 +140,7 @@ export class BrowserObject extends DurableObject<Env> {
   async lookupAgent(tokenHash: string): Promise<AgentLookup> {
     if (!this.session || !this.socket()) return { status: 'offline' };
     const agent = this.session.agents.find((candidate) => hashesEqual(candidate.tokenHash, tokenHash));
-    return agent ? { status: 'ok', agent } : { status: 'invalid' };
+    return agent ? { status: 'ok', agent, browser: { id: this.session.browserId, name: this.session.browserName } } : { status: 'invalid' };
   }
 
   async callAgent(tokenHash: string, tool: string, args: Record<string, unknown>): Promise<ToolResult> {

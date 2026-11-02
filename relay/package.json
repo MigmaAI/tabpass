@@ -1,6 +1,6 @@
 {
   "name": "@tabpass/relay",
-  "version": "0.3.0",
+  "version": "0.3.3",
   "description": "Remote MCP relay that lets AI agents read and use the tabs of a browser running the Tabpass extension.",
   "type": "module",
   "main": "dist/index.js",

@@ -147,7 +147,7 @@ export class MemoryDirectory implements BrowserDirectory {
     const browser = this.browsers.get(token.browserId);
     if (!browser) return { status: 'offline' };
     const agent = browser.agents.find((candidate) => hashesEqual(candidate.tokenHash, token.tokenHash));
-    return agent ? { status: 'ok', agent } : { status: 'invalid' };
+    return agent ? { status: 'ok', agent, browser: { id: browser.browserId, name: browser.browserName } } : { status: 'invalid' };
   }
 
   async callAgent(token: ParsedAgentToken, tool: string, args: Record<string, unknown>): Promise<ToolResult> {

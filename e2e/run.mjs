@@ -214,59 +214,85 @@ try {
   const row = (name) => panel.getByRole('button', { name, exact: true });
   const back = () => panel.locator('header button').first().click();
   const region = (name) => panel.getByRole('region', { name });
+  const goHome = async () => {
+    for (let depth = 0; depth < 6; depth++) {
+      if (await panel.locator('header button[aria-label="Settings"]').isVisible()) return;
+      await back();
+    }
+    throw new Error('Could not return to Home through the visible back buttons');
+  };
+  const openConnections = async () => {
+    await goHome();
+    const trigger = panel.getByRole('button', { name: /^Connections/ });
+    if (await trigger.getAttribute('aria-expanded') === 'false') await trigger.click();
+  };
 
   let controlUrl;
   let control;
   let formTabId;
 
   console.log('Side panel');
-  await step('first run explains what leaves the browser; the relay is set under This browser', async () => {
+  await step('first run explains what leaves the browser; the relay is set under Settings', async () => {
     await panel.getByRole('note').getByText(/Tabpass shares a page only with AI tools you connect, and only on sites you allow/).waitFor();
     await shoot(panel, 'home-first-run.png');
     await panel.getByRole('button', { name: 'Got it' }).click();
-    await panel.getByRole('button', { name: /This browser/ }).click();
+    await row('Settings').click();
     await panel.locator('#relay-url').fill(relayWs);
     await panel.locator('form', { has: panel.locator('#relay-url') }).getByRole('button', { name: 'Save' }).click();
     await panel.getByText(`Connected. AI tools reach this browser through 127.0.0.1:${relayPort}.`).waitFor({ timeout: 10000 });
     await back();
     await panel.getByRole('status').getByText(/^Connected · Chrome on/).waitFor();
     assert.equal((await relay.directory.stats()).browsers, 1);
+    await row('Connect your AI').waitFor();
+    assert.equal(await panel.getByRole('button', { name: /^Connections/ }).getAttribute('aria-expanded'), 'false');
+    for (const name of ['App setup options', 'Activity', 'Website access']) {
+      assert.equal(await panel.getByRole('button', { name, exact: true }).count(), 0, `${name} belongs in Settings`);
+    }
   });
 
-  await step('"App setup options" opens prompt-first setup and keeps the manual URL collapsed', async () => {
+  await step('"App setup options" shows the public server and app guides', async () => {
+    await row('Settings').click();
+    await row('Activity').click();
+    await panel.getByRole('heading', { name: 'Activity', exact: true }).waitFor();
+    await back();
+    await panel.getByRole('button', { name: /^Website access/ }).click();
+    await panel.getByRole('heading', { name: 'Sites', exact: true }).waitFor();
+    await back();
     await row('App setup options').click();
-    await panel.waitForFunction(() => document.activeElement?.tagName === 'H1' && document.activeElement.textContent === 'Connect your AI');
+    await panel.waitForFunction(() => document.activeElement?.tagName === 'H1' && document.activeElement.textContent === 'Connect an app');
     const serverUrl = panel.locator('code', { hasText: `${relayHttp}/mcp` }).first();
-    assert.equal(await serverUrl.isVisible(), false, 'The raw server URL starts hidden under Manual setup');
+    await serverUrl.waitFor({ state: 'visible' });
+    await panel.getByRole('button', { name: 'Copy Server URL', exact: true }).waitFor();
+    await panel.getByRole('heading', { name: 'One link. Your browser.', exact: true }).waitFor();
+    assert.equal(await panel.getByRole('button', { name: 'Create connection prompt', exact: true }).count(), 0, 'Home owns private prompt creation');
+    assert.equal(await panel.getByText('Manual setup', { exact: true }).count(), 0, 'Public server setup is shown directly');
+    for (const name of ['Claude', 'ChatGPT', 'Cursor']) await row(name).waitFor();
+    await panel.getByText('More tools', { exact: true }).waitFor();
     await shoot(panel, 'connect.png', { fullPage: true });
-    await panel.getByText('Manual setup', { exact: true }).click();
-    await panel.getByText('Server URL', { exact: true }).waitFor();
-    await serverUrl.waitFor();
-    await panel.getByText('Manual setup', { exact: true }).click();
-    assert.equal(await serverUrl.isVisible(), false, 'Closing Manual setup hides the raw server URL again');
     await row('Claude').click();
     await panel.getByRole('button', { name: 'Add to Claude' }).waitFor();
     await panel.getByText(/connects from the internet, so it cannot reach a relay on this computer/).waitFor();
     await shoot(panel, 'tool-claude.png', { fullPage: true });
     await back();
-    await panel.waitForFunction(() => document.activeElement?.textContent === 'Connect your AI');
+    await panel.waitForFunction(() => document.activeElement?.textContent === 'Connect an app');
   });
 
   await step('a private connection prompt starts at My AI and Read and can be raised', async () => {
-    await row('Create connection prompt').click();
+    await goHome();
+    await row('Connect your AI').click();
     assert.equal(await panel.locator('#agent-name').inputValue(), 'My AI');
     assert.equal(await panel.getByRole('radio', { name: 'Read', exact: true }).getAttribute('aria-checked'), 'true');
-    await panel.getByRole('button', { name: 'Claude', exact: true }).click();
+    await panel.getByText('Name this connection', { exact: true }).click();
+    await panel.locator('#agent-name').fill('Claude');
     assert.equal(await panel.getByRole('radio', { name: 'Read', exact: true }).getAttribute('aria-checked'), 'true');
     await panel.getByRole('radio', { name: 'Read', exact: true }).focus();
     // Radix selects on deferred focus while the physical arrow key remains down.
     await panel.keyboard.press('ArrowRight', { delay: 50 });
     await panel.waitForFunction(() => [...document.querySelectorAll('[role="radio"]')].some((radio) => radio.textContent === 'Read and act' && radio.getAttribute('aria-checked') === 'true'));
     assert.equal(await panel.getByRole('radio', { name: 'Read and act' }).getAttribute('aria-checked'), 'true');
-    await panel.getByRole('button', { name: 'Create connection prompt', exact: true }).click();
+    await panel.getByRole('button', { name: 'Continue', exact: true }).click();
     await panel.waitForFunction(() => document.activeElement?.tagName === 'H1' && document.activeElement.textContent === 'Claude');
-    await row('Copy connection prompt').waitFor();
-    await panel.getByText('This server runs on your computer. Cloud AI apps cannot reach it; use a public server in This browser.', { exact: false }).waitFor();
+    await row('Copy prompt').waitFor();
     const advanced = panel.locator('details', { hasText: 'Advanced setup' });
     const code = advanced.locator('code').first();
     assert.equal(await code.isVisible(), false, 'The private server URL starts hidden until Advanced setup is opened');
@@ -276,8 +302,8 @@ try {
       window.tabpassWriteText = navigator.clipboard.writeText.bind(navigator.clipboard);
       navigator.clipboard.writeText = async () => { throw new Error('Clipboard unavailable'); };
     });
-    await row('Copy connection prompt').click();
-    await panel.getByRole('alert').getByText('Could not copy the prompt. Try Copy connection prompt again.', { exact: true }).waitFor();
+    await row('Copy prompt').click();
+    await panel.getByRole('alert').getByText('Could not copy. Try again.', { exact: true }).waitFor();
     assert.equal(await panel.getByText('Copied. Paste it into your AI when the browser is online.', { exact: true }).count(), 0);
     await panel.evaluate(() => {
       navigator.clipboard.writeText = async (text) => {
@@ -286,10 +312,11 @@ try {
       };
     });
     // A successful retry must still write through the real Clipboard API.
-    await row('Copy connection prompt').click();
+    await row('Copy prompt').click();
     await panel.getByRole('status').getByText('Copied. Paste it into your AI when the browser is online.', { exact: true }).waitFor();
     await advanced.locator('summary').click();
     await code.waitFor();
+    await panel.getByText(/Cloud AI apps cannot reach/).waitFor();
     controlUrl = await code.textContent();
     await advanced.locator('summary').click();
     const copiedPrompt = await panel.evaluate(() => window.tabpassCopiedPrompt);
@@ -311,8 +338,9 @@ try {
     assert.equal(controlUrl.split('/mcp/tp_')[1].split('.')[0], idOf(relayKey));
     assert.notEqual(idOf(relayKey), idOf(settings.browserKey));
     await shoot(panel, 'agent.png', { fullPage: true });
-    await back();
-    await back();
+    await goHome();
+    assert.equal(await row('Claude').count(), 0, 'Saved connections stay hidden until Connections is opened');
+    await openConnections();
     await row('Claude').waitFor();
   });
 
@@ -323,7 +351,14 @@ try {
 
   await step('read_page asks for the site first; "Always allow" lets it through', async () => {
     control = await connectAgent(controlUrl);
-    assert.equal((await control.listTools()).tools.length, 15);
+    assert.equal((await control.listTools()).tools.length, 16);
+    const identity = JSON.parse(textOf(await control.callTool({ name: 'list_browsers', arguments: {} })));
+    assert.equal(identity.scope, 'this_connection');
+    assert.equal(identity.browsers.length, 1);
+    assert.ok(identity.browsers[0].id);
+    assert.ok(identity.browsers[0].name.includes('Chrome'));
+    assert.equal(identity.browsers[0].online, true);
+    assert.equal(identity.browsers[0].access, 'control');
     const tabs = textOf(await control.callTool({ name: 'list_tabs', arguments: {} }));
     formTabId = Number(/\[(\d+)\] Acme Studio/.exec(tabs)[1]);
     const [result] = await Promise.all([
@@ -470,8 +505,9 @@ try {
     await page.close();
 
     const signedIn = await connectAgent(`${relayHttp}/mcp`, { authProvider: providerImpl });
-    assert.equal((await signedIn.listTools()).tools.length, 15, 'Read and act, as chosen in Tabpass');
+    assert.equal((await signedIn.listTools()).tools.length, 16, 'Read and act, as chosen in Tabpass');
     assert.match(textOf(await signedIn.callTool({ name: 'list_tabs', arguments: {} })), /Acme Studio/);
+    await openConnections();
     await row('Claude Code').waitFor();
     await row('Claude Code').click();
     await panel.getByText(/Signed in from an app on this computer/).waitFor();
@@ -493,7 +529,7 @@ try {
     assert.equal(mcpUrl, `${relayHttp}/mcp`);
     assert.equal(access, 'read');
     const fromSite = await connectAgent(mcpUrl, { requestInit: { headers: { Authorization: `Bearer ${token}` } } });
-    assert.equal((await fromSite.listTools()).tools.length, 6);
+    assert.equal((await fromSite.listTools()).tools.length, 7);
 
     // Now the site is known: status answers without a click, and it can disconnect itself.
     await site.reload();
@@ -507,6 +543,7 @@ try {
 
   console.log('Connect to Migma');
   await step('"Connect" on Home pairs Migma in one click and closes the Migma tab', async () => {
+    await openConnections();
     const opened = waitForPage('/connect/browser');
     await region('Migma').getByRole('button', { name: 'Connect', exact: true }).click();
     const connectTab = await opened;
@@ -547,19 +584,23 @@ try {
 
   console.log('Safety switches');
   await step('the switch pauses every agent; Sites lists what was allowed', async () => {
+    await goHome();
+    await row('Settings').click();
     await panel.getByRole('switch', { name: 'Let agents use this browser' }).click();
-    await panel.getByRole('status').getByText(/^Paused/).waitFor();
+    await goHome();
+    await panel.getByRole('status').getByText('Browser access paused', { exact: true }).waitFor();
     assert.match(textOf(await control.callTool({ name: 'list_tabs', arguments: {} })), /paused/);
+    await row('Settings').click();
     await panel.getByRole('switch', { name: 'Let agents use this browser' }).click();
     assert.ok(!(await control.callTool({ name: 'list_tabs', arguments: {} })).isError);
-    await panel.getByRole('button', { name: /^Sites/ }).click();
+    await panel.getByRole('button', { name: /^Website access/ }).click();
     await region('Always allowed').getByText('127.0.0.1').waitFor();
     await shoot(panel, 'sites.png', { fullPage: true });
-    await back();
+    await goHome();
   });
 
   await step('the panel fits its width in light and dark mode', async () => {
-    await panel.getByRole('button', { name: /This browser/ }).click();
+    await row('Settings').click();
     const originalName = await panel.locator('#browser-name').inputValue();
     await panel.locator('#browser-name').fill('W'.repeat(60));
     await panel.locator('form', { has: panel.locator('#browser-name') }).getByRole('button', { name: 'Save' }).click();
@@ -571,13 +612,14 @@ try {
         await panel.setViewportSize({ width, height: 860 });
         assert.equal(await panel.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `Home overflow at ${width}px in ${colorScheme}`);
         await shoot(panel, `home-${colorScheme}-${width}.png`, { fullPage: true });
+        await row('Settings').click();
         await row('App setup options').click();
         assert.equal(await panel.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `Connect overflow at ${width}px in ${colorScheme}`);
         await shoot(panel, `connect-${colorScheme}-${width}.png`, { fullPage: true });
-        await back();
+        await goHome();
       }
     }
-    await panel.getByRole('button', { name: /This browser/ }).click();
+    await row('Settings').click();
     await panel.locator('#browser-name').fill(originalName);
     await panel.locator('form', { has: panel.locator('#browser-name') }).getByRole('button', { name: 'Save' }).click();
     await back();
@@ -598,6 +640,7 @@ try {
   });
 
   await step('disconnecting an AI tool in the panel cuts its link at once', async () => {
+    await openConnections();
     await row('Claude').click();
     await panel.getByRole('button', { name: 'Disconnect', exact: true }).click();
     await panel.getByRole('alertdialog').waitFor();

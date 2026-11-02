@@ -2,6 +2,8 @@
 
 How Tabpass gets to the Chrome Web Store, and how each update ships. The store copy lives in [`store/listing.md`](../store/listing.md) and [`store/privacy-practices.md`](../store/privacy-practices.md); the privacy policy is [`PRIVACY.md`](../PRIVACY.md).
 
+[Public install page](https://chromewebstore.google.com/detail/tabpass/dfkcbinlgcemppeealhaicfdljcfnfdp). Use this link for installation, not the developer dashboard or an unpacked build.
+
 ```
 one time:      developer account ─► 2-Step Verification ─► verify migma.ai ─► host privacy policy ─► API keys
 each release:  deploy relay ─► bump version ─► build ─► test ─► package ─► tag ─► CI uploads draft ─► submit
@@ -64,9 +66,11 @@ These keys can upload and publish **every** item of this publisher. Revoke the O
 
 ## Before each release
 
-1. **Deploy the relay first** (`cd relay && yarn deploy:worker`, see the README), and make sure it still accepts the version of the extension people have now (the relay refuses old extensions with an "update" message, so a breaking protocol change needs a relay that speaks both). `RELAY_SECRET` must stay the same across deploys, or every signed-in tool has to sign in again. Check:
+1. **Test, then deploy the relay before publishing the extension** (`cd relay && yarn deploy:worker`, see the README), and make sure it still accepts the version of the extension people have now (the relay refuses old extensions with an "update" message, so a breaking protocol change needs a relay that speaks both). Preserve the production variables and secrets, especially `RELAY_SECRET`, or signed-in tools will need to sign in again. Check:
    - `curl -sS https://tabs.migma.ai/health` answers.
    - WebSocket upgrades work on `wss://tabs.migma.ai/extension`.
+   - An existing approved connection can still list and read an allowed tab.
+   - For the 0.3.3 release, `list_browsers` returns only the browser approved by that credential: its ID, name, `online: true` and access level. An offline browser returns an error. The result does not include focus or pause state, and does not discover other browsers. Multiple browsers require separate approved connections.
 2. **The store build must default to `wss://tabs.migma.ai/extension`.** `scripts/package.mjs` refuses a build whose default relay is not `wss://`.
 3. **Bump the version** in both `extension/public/manifest.json` and `extension/package.json` (same value, higher than the version in the store).
 4. **New permissions?** Users get a warning and Chrome disables the extension until they accept, and the review takes longer. Add a justification to `store/privacy-practices.md`. If what leaves the browser changes, update `PRIVACY.md` and tell users in the extension before it applies.
@@ -76,8 +80,10 @@ These keys can upload and publish **every** item of this publisher. Revoke the O
    ```
 6. **Run the tests:**
    ```bash
-   yarn test        # relay tests and typechecks
-   yarn test:e2e    # real Chromium (rebuilds extension/dist as a dev build!)
+   yarn test                       # relay tests and typechecks
+   yarn --cwd relay test:worker     # Cloudflare runtime tests
+   PATH="$PWD/relay/node_modules/.bin:$PATH" yarn --cwd connect test
+   yarn test:e2e                   # real Chromium (rebuilds extension/dist as a dev build!)
    ```
    `yarn test:e2e` overwrites `extension/dist` with a dev build, so build the store version again afterwards.
    If the UI changed, make the store images again (`cd e2e && xvfb-run -a node store-assets.mjs`; it builds its own production copy) and upload the new ones with the release.
@@ -86,12 +92,13 @@ These keys can upload and publish **every** item of this publisher. Revoke the O
    node scripts/package.mjs
    ```
    It checks the build (no "(dev)" name, no localhost in `externally_connectable`, no `key`, versions match, every icon and referenced file present, default relay over `wss://`) and writes `release/tabpass-<version>.zip` with `manifest.json` at the root. It prints the size and SHA-256. `--check` validates without writing.
-8. **Smoke test the zip** in a fresh Chrome profile: unzip, **Load unpacked**, and check that the panel says "Connected", a tool can sign in with `https://tabs.migma.ai/mcp`, the site prompt appears, and no Migma Connect row is shown. Migma account connections remain development-only until Migma's integration ships.
+8. **Smoke test the zip** in a fresh Chrome profile: unzip, **Load unpacked**, and check the full flow: **Connect your AI → Continue → Copy prompt**. Confirm Read is the default, the copied prompt works with a compatible agent, and the site approval appears before reading a new website. Also verify that a tool can sign in with `https://tabs.migma.ai/mcp`, `list_browsers` identifies only this approved browser, and pause and disconnect still block access. The separate development provider-account row must stay hidden in the store build; Migma's personal Web Protocol connection is a different path.
 9. **Tag and push:**
    ```bash
-   git tag extension-v0.3.0 && git push origin extension-v0.3.0
+   git tag extension-v0.3.3
+   git push origin extension-v0.3.3
    ```
-   The release workflow builds, packages, attaches the zip to a GitHub Release, and uploads it to the store as a draft.
+   Use the version you just built; `0.3.3` is the example for this release. The release workflow builds, packages, attaches the zip to a GitHub Release, and uploads it to the store as a draft. An upload is not a review submission or a published update. Check the listing and screenshots, then submit the draft with automatic publishing enabled if it should go live when approved.
 
 ## First submission
 

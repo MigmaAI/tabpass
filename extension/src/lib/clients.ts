@@ -10,7 +10,8 @@ import { isLocalRelay } from './format';
  * - `oauth: false`: pass the agent's token link, `tokenSetup(mcpUrl, token).connectorUrl`
  *   (`https://tabs.migma.ai/mcp/<token>`), so the same steps and one-click link carry the token.
  *
- * Researched October 2026. Sources and what could not be verified: docs/clients.md.
+ * Researched October 2026; Hermes and OpenClaw checked November 2026.
+ * Sources and what could not be verified: docs/clients.md.
  */
 
 export type ClientKind = 'web' | 'app' | 'ide' | 'cli' | 'other';
@@ -158,6 +159,36 @@ export const CLIENTS: ClientGuide[] = [
     ],
     note: 'One setup works in the Codex CLI, the IDE extension and the app.',
     docsUrl: 'https://developers.openai.com/codex/mcp',
+  },
+  {
+    id: 'hermes',
+    name: 'Hermes',
+    kind: 'cli',
+    color: '#995a36',
+    oauth: true,
+    steps: (mcpUrl) => [
+      { text: 'Run this where Hermes is installed.', copy: `hermes mcp add ${SERVER_ID} --url ${mcpUrl} --auth oauth` },
+      { text: 'Open the authorization link and approve in Tabpass.' },
+      { text: 'Check the connection.', copy: `hermes mcp test ${SERVER_ID}` },
+      { text: 'Start a new chat, or run /reload-mcp in your current chat.' },
+    ],
+    note: 'Use a public relay if Hermes runs on another computer. Remote OAuth may need SSH port forwarding; a private connection link also works.',
+    docsUrl: 'https://hermes-agent.nousresearch.com/docs/user-guide/features/mcp',
+  },
+  {
+    id: 'openclaw',
+    name: 'OpenClaw',
+    kind: 'cli',
+    color: '#a84238',
+    oauth: true,
+    steps: (mcpUrl) => [
+      { text: 'Run this where OpenClaw is installed.', copy: `openclaw mcp add ${SERVER_ID} --url ${mcpUrl} --transport streamable-http --auth oauth` },
+      { text: 'In OpenClaw, open Settings → MCP and click Sign in for Tabpass.' },
+      APPROVE,
+      { text: 'Check the connection.', copy: `openclaw mcp doctor ${SERVER_ID} --probe` },
+    ],
+    note: 'Use a public relay for a remote agent. For CLI sign-in, stop the Gateway before openclaw mcp login tabpass, then restart it.',
+    docsUrl: 'https://docs.openclaw.ai/tools/mcp',
   },
   {
     id: 'vscode',
@@ -409,7 +440,7 @@ export function connectionPrompt(mcpUrl: string, token: string, access: 'read' |
       ? ['This server runs on my computer. Only use it from tools on that same computer; cloud-hosted tools cannot reach it. If you are cloud-hosted, ask me to choose a public relay instead.']
       : []),
     'Connect with your available MCP or HTTP tools. This URL contains the access key; no separate Tabpass sign-in is needed. If your tools cannot connect, tell me which connector setup is needed instead of claiming access.',
-    'Discover the available tools and call list_tabs first, then help with my request. Read a relevant tab with read_page before relying on its contents.',
+    'Discover the available tools. If list_browsers is available, call it to identify this connection’s browser. When several Tabpass servers are configured, use the one matching my requested browser; ask if ambiguous. Then call list_tabs and help with my request. Read a relevant tab with read_page before relying on its contents.',
     access === 'read'
       ? 'This connection has read-only access. Read and summarize permitted tabs; do not click, type, navigate, or change browser tabs.'
       : 'This connection allows reading and controlling permitted tabs. Only act within my request and ask before sensitive or irreversible actions.',

@@ -1,10 +1,12 @@
 # Tabpass
 
-**Your AI, your open tabs.** Give your AI access to the Chrome tabs you already have open, signed in as you. Copy a private connection prompt into an AI that can call MCP servers or make HTTP requests. You approve each new site.
+**Your browser, within your agent's reach.** Give remote AI agents access to the Chrome browser you already use, signed in as you. Read pages, inspect designs and take action from another computer or server. You approve the connection and each new site.
 
 Open source (MIT), by the [Migma](https://migma.ai) team.
 
-<p align="center"><img src="store/images/01-home.png" alt="The Tabpass side panel next to a shop page: three AI tools and recent activity" width="720"></p>
+<p align="center"><img src="store/images/01-home.png" alt="The Tabpass side panel beside the fictional Northwind Studio product page" width="720"></p>
+
+Store screenshots use local demo pages and sample connections, not a person's browsing session.
 
 It follows the structure of OpenAI's ChatGPT Chrome extension: a side panel, per-site approval, a tab group per tool, and read vs act. The difference is that the browser is reached through a **remote MCP server**, so any AI tool can use it, from anywhere.
 
@@ -18,14 +20,16 @@ It follows the structure of OpenAI's ChatGPT Chrome extension: a side panel, per
 
 ## Connect your AI
 
+The steps below describe extension 0.3.3. Check the version under **Settings → About** if your installed copy shows different labels.
+
 [Install Tabpass from the Chrome Web Store](https://chromewebstore.google.com/detail/tabpass/dfkcbinlgcemppeealhaicfdljcfnfdp), then:
 
-1. Open Tabpass and click **Create connection prompt**.
-2. Name your connection. Keep **Read** for research, or choose **Read and act** for browser actions.
-3. Click **Create connection prompt**, then **Copy connection prompt**.
+1. Open Tabpass and click **Connect your AI**.
+2. Keep **Read** for research, or choose **Read and act** for browser actions. The name is optional under **Name this connection**.
+3. Click **Continue**, then **Copy prompt**.
 4. Paste it into your AI and say what you need help with.
 
-No separate Tabpass account or sign-in is needed. Your AI needs tools that can call remote MCP servers or make HTTP requests. Some apps require connector setup first; **App setup options** has their instructions.
+No separate Tabpass account or sign-in is needed. Your AI needs tools that can call remote MCP servers or make HTTP requests. Some apps require connector setup first; **Settings → App setup options** has their instructions.
 
 The prompt contains a private access link. Anyone with it has the access you chose. Keep it out of public chats and shared documents; **Disconnect** revokes it. Tabpass still asks before reading or using each new website.
 
@@ -33,11 +37,19 @@ For manual setup, open the connection's **Advanced setup** for its private serve
 
 Step-by-step guides: [docs/clients.md](docs/clients.md). Agents that read docs can start at `https://tabs.migma.ai/llms.txt`.
 
+## Hermes, OpenClaw and multiple browsers
+
+Hermes and OpenClaw support remote MCP connections. Use [their setup guides](docs/clients.md#hermes-agent) to connect Tabpass with OAuth or a private link. No separate Tabpass account is needed. Chrome, the extension and its computer must stay online while your agent works.
+
+Install Tabpass in each Chrome browser or profile you want to use. Name them under **Settings** (for example, **Work Chrome** and **Personal Chrome**) and add each as a separate MCP connection in your agent. Each connection needs its own approval and credentials.
+
+This release's relay provides `list_browsers` on ordinary MCP connections. It returns only that connection's browser ID, name, online state and granted access. Agents can call it on each configured Tabpass server, then use the server matching your requested browser. They should ask when the choice is unclear. Offline connections return an error; one browser's key never grants access to another. `online` means the browser is connected to the relay; this result does not report window focus or whether access is paused. Older self-hosted relays may not expose the tool.
+
 ## Ways to connect
 
 | | How | Who it acts as |
 |---|---|---|
-| **Connection prompt** | **Create connection prompt**, then copy and paste into your AI | The name and access you chose |
+| **Connection prompt** | **Connect your AI → Continue → Copy prompt**, then paste into your AI | The name and access you chose |
 | **One URL** (OAuth) | Add `https://tabs.migma.ai/mcp`, approve in Tabpass's window | The tool's name, with the access you picked |
 | **Link with a key** | The connection’s **Advanced setup** | The name you typed |
 | **Website** | The site's "Connect your browser" button, then confirm in Tabpass | The site's name; the page passes its token to the site's authenticated backend ([Web Protocol](docs/web-protocol.md), [browser SDK](connect/README.md)) |
@@ -58,7 +70,7 @@ Migma uses the public Web Protocol through [`@migma/tabpass-connect`](connect/RE
 | `wait_for` | read | Wait for a load, or for text to appear. |
 | `open_tab`, `navigate`, `activate_tab`, `close_tabs`, `group_tabs` | act | Tab management. Opened tabs go into the tool's own tab group. |
 | `click`, `type`, `press_key`, `scroll` | act | Act by ref, CSS selector, or visible text. |
-| `list_browsers` | account | A person's connected browsers. Other tools take `browser` to pick one; the default is the one used last. |
+| `list_browsers` | read | Identify the single browser authorized by this MCP connection. Offline connections return an error. With separate connections, call it on each and use the matching server. In the development-only account mode, lists that person's browsers; other tools take a browser ID or unique name. |
 
 Every page result starts with a line marking the content as untrusted, and the server instructions tell tools never to follow instructions found in pages.
 
@@ -87,7 +99,7 @@ yarn --cwd extension build:dev                      # extension/dist, set to the
 ```
 
 1. Open `chrome://extensions`, turn on Developer mode, **Load unpacked**, and pick `extension/dist`.
-2. Click the toolbar icon. The panel connects to `ws://localhost:8787/extension` (change it under **This browser**).
+2. Click the toolbar icon. The panel connects to `ws://localhost:8787/extension` (change it under **Settings**).
 3. Connect a tool on this computer with `http://localhost:8787/mcp`, for example `claude mcp add --transport http tabpass http://localhost:8787/mcp`. Cloud tools (Claude.ai, ChatGPT) connect from their own servers, so they need a relay with a public HTTPS address.
 
 `yarn --cwd extension watch` rebuilds on change. `yarn --cwd extension build` makes the store build, which uses `wss://tabs.migma.ai/extension`.
@@ -122,7 +134,7 @@ docker run -p 8787:8787 -e PUBLIC_URL=https://tabs.example.com -e RELAY_SECRET=�
 | `PUBLIC_URL` | `http://localhost:$PORT` | The address tools use. Sign-in redirects and links are built from it. |
 | `RELAY_SECRET` | random, with a warning | Signs OAuth clients and codes. Without a stable value, every restart signs every tool out. |
 | `PORT`, `HOST` | `8787`, `127.0.0.1` (`0.0.0.0` in Docker) | |
-| `INSTALL_URL` | the GitHub page | Where the sign-in page sends people without Tabpass. |
+| `INSTALL_URL` | [Chrome Web Store](https://chromewebstore.google.com/detail/tabpass/dfkcbinlgcemppeealhaicfdljcfnfdp) | Where the sign-in page sends people without Tabpass. |
 | `RATE_LIMIT_PER_MINUTE` | `300` | MCP requests per tool per minute. |
 | `ACCOUNTS_VERIFY_URL`, `ACCOUNTS_VERIFY_SECRET` | off | Account mode: where the relay checks browser connections. |
 | `INTERNAL_SECRET` | off | Turns on `/internal` for the account provider's servers. |
@@ -134,7 +146,7 @@ Put it behind TLS with WebSocket upgrades on `/extension`. The Node relay keeps 
 - **Nothing to steal on the relay.** The extension makes a random key on install, and shows each relay a key derived for that relay alone, so a relay (and any website that asks to be one) cannot pose as the browser elsewhere. A tool's token is `tp_<browserId>.<secret>`; the relay only ever sees `sha256(secret)`. OAuth clients and codes are signed and sealed with `RELAY_SECRET`, and codes work once.
 - **You approve, in Tabpass's own window.** Signing in, a website's connect request and Migma's connect all open a Tabpass window that a page cannot draw over or click for you. A page can only ask after the person's click.
 - **Per-site approval.** Listing tab titles needs no prompt; reading or acting on a site does. **Always allow** applies to every tool you connect; **Allow for 10 minutes** to that tool only. Blocked sites are hidden from `list_tabs`.
-- **Read means read.** Tools with Read access do not even see the act tools. A switch in the header pauses every tool.
+- **Read means read.** Tools with Read access do not even see the act tools. **Settings → Browser access** pauses every tool.
 - **Not detectable by websites.** The web protocol answers a site only after a click on its page, or if you connected it before.
 - **Disconnecting.** Removing an agent in Tabpass blocks its next request. Disconnecting in Migma removes its saved credential, preventing further browser calls; it leaves the extension grant and existing chat content in place. Remove the grant separately in Tabpass's side panel if needed.
 - **Outages never disconnect people.** A provider outage or a wrong relay secret counts as "unavailable", never as "revoked".
@@ -159,9 +171,9 @@ yarn --cwd relay build && cd e2e && xvfb-run -a node store-assets.mjs
 ## Tests
 
 ```bash
-yarn test                         # relay tests (40) + typechecks
-yarn --cwd relay test:worker      # the same relay on workerd, the Cloudflare runtime (8)
-yarn test:e2e                     # 15 end-to-end steps in real Chromium (needs xvfb)
+yarn test                         # relay tests + typechecks
+yarn --cwd relay test:worker      # the same relay on workerd, the Cloudflare runtime
+yarn test:e2e                     # end-to-end steps in real Chromium (needs xvfb)
 ```
 
 The end-to-end run loads the built extension and drives it like a person would:

@@ -41,6 +41,7 @@ const ACT = { readOnlyHint: false, destructiveHint: false, openWorldHint: true }
 
 export const SERVER_INSTRUCTIONS = [
   "These tools reach the user's real Chrome browser, signed in as them.",
+  'Call list_browsers to identify the authorized browser before using its tabs. When several Tabpass servers are configured, identify each and use the connection matching the user request; ask if the intended browser is ambiguous.',
   'list_tabs returns navigation metadata only: tabId, title, URL and which tab is active. It never returns page content.',
   'For any task about what a page says or shows, first identify the intended tab, then call read_page before answering or creating content. Never infer page content from a title or URL.',
   'When the user says the open, current or active tab, use the active tab in the focused window. If the intended tab is missing or ambiguous, ask which tab to use instead of guessing.',
@@ -253,13 +254,13 @@ const browserArg = z
   .min(1)
   .max(80)
   .optional()
-  .describe("Which of the person's browsers to use, by name from list_browsers. Default: the one they used last.");
+  .describe("Which of the person's browsers to use, by ID or unique name from list_browsers. Default: the one they used last.");
 
 export const LIST_BROWSERS_TOOL: BrowserToolDefinition = {
   name: 'list_browsers',
   title: 'List browsers',
   description:
-    "List the person's connected browsers and when each was last used. Other tools use the most recent one unless you pass its name as `browser`.",
+    "List the person's connected browser IDs, names and when each was last used. Other tools use the most recent one unless you pass its ID or unique name as `browser`.",
   access: 'read',
   inputSchema: {},
   annotations: READ,

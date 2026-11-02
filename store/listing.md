@@ -22,7 +22,7 @@ Connect compatible AI apps to your open tabs. Share page content and allow brows
 
 ## Description
 
-For the prompt-first extension update. Plain text. The store does not render Markdown, so paste it as is.
+For extension 0.3.3. Plain text. The store does not render Markdown, so paste it as is.
 
 ```
 Your AI can work with the pages you already have open, signed in as you. Use it to research, read references or work through browser tasks. You approve each new site first.
@@ -30,19 +30,22 @@ Your AI can work with the pages you already have open, signed in as you. Use it 
 Tabpass connects your open Chrome tabs to AI agents through MCP (Model Context Protocol).
 
 HOW IT WORKS
-1. Open Tabpass and choose "Create connection prompt".
-2. Choose "Read" or "Read and act", then create your connection.
-3. Copy the private prompt and paste it into an AI that can use MCP servers or make HTTP requests.
+1. Open Tabpass and choose "Connect your AI".
+2. Choose "Read" or "Read and act", then click "Continue".
+3. Click "Copy prompt" and paste it into an AI that can use MCP servers or make HTTP requests.
 4. Ask it to help with your open tabs. Tabpass asks before the AI reads or uses each new website.
 
 No separate Tabpass account or sign-in is needed. The private link grants the access you selected, so keep it out of public chats and shared documents. Disconnect it in Tabpass to revoke access.
 
-Some AI apps need setup in their connector settings first. "App setup options" has those instructions.
+Some AI apps need setup in their connector settings first. Open "Settings", then "App setup options" for those instructions.
+
+To use more than one browser, install Tabpass in each browser or profile and create a separate connection for each. Give each browser a name in Settings so your AI can identify the one you want.
 
 Some AI websites can connect from their own page, in one click. Tabpass still asks you first, in its own window.
 
 WHAT A TOOL CAN DO
 With Read:
+- identify the browser approved for this connection
 - see the titles and addresses of your open tabs
 - read the text of a page, including tables and links
 - read the text you highlighted
@@ -57,7 +60,7 @@ YOU STAY IN CONTROL
 - AI tools can see the titles and addresses of your tabs. To read or use a page, they need your OK for that site.
 - Blocked sites are hidden from them.
 - A "Read" tool cannot click or type.
-- One switch pauses every tool.
+- "Browser access" in Settings pauses every tool.
 - While a tool acts on a tab, a blue frame and its name show on the page.
 - Activity shows browser actions and errors.
 - Disconnect a tool and it loses access at once.
@@ -105,7 +108,7 @@ English
 | Field | Value | |
 |---|---|---|
 | Official URL | `migma.ai` | Shown only after migma.ai is verified in Google Search Console with the publisher's Google account (see `docs/publishing.md`). **[confirm]** |
-| Homepage URL | `https://github.com/migmaai/tabpass` | **[confirm]** placeholder; a page on migma.ai (e.g. `https://migma.ai/tabpass`) is better once it exists. |
+| Homepage URL | `https://migma.ai/tabpass` | Public product page. |
 | Support URL | `https://github.com/migmaai/tabpass/issues` | **[confirm]** placeholder; must be public before submission. |
 | Privacy policy URL | `https://migma.ai/tabpass/privacy` | Goes in the **Privacy practices** tab. **[confirm]** host `PRIVACY.md` there first. |
 
@@ -123,18 +126,18 @@ Promo images must not claim store status ("Editor's choice", "#1") and should no
 
 ## Screenshots
 
-Five 1280x800 PNGs in `store/images/`, made from the **production build** by a script that drives the real extension:
+Five 1280x800 PNGs in `store/images/` show the 0.3.3 production UI. `02-connect.png` is a genuine Chrome capture with the public Migma website and Tabpass side panel. The other four use the fictional Northwind Studio shop and sample connections in a controlled local test; they illustrate the real extension UI, not customer sessions. Regenerate and inspect images after UI changes:
 
 ```bash
-yarn --cwd relay build && cd e2e && xvfb-run -a node store-assets.mjs
+yarn --cwd relay build && cd e2e && STORE_BROWSER_SCREENSHOT=/absolute/path/chrome-capture.png xvfb-run -a node store-assets.mjs
 ```
 
-It serves the relay as `https://tabs.migma.ai` and two made-up sites (`northwind.studio`, and `chatgpt.com` only as the sign-in's return address) from the local machine, connects three tools, and photographs the side panel and Tabpass's windows. Nothing goes to the internet, and every name and address in the images is made up or Migma's own. Run it again after any UI change, so the images match the build you submit.
+The script serves the relay and fictional `northwind.studio` product page locally. It also serves a local placeholder at `chatgpt.com` for the OAuth return address; it does not connect to that service. Product content and connection credentials are synthetic; bundled app names and icons identify real compatibility guides. The screenshots show the actual extension UI. Run the script again after any UI change, so the images match the build you submit.
 
 | File | Caption (in the image) | What it shows |
 |---|---|---|
-| `01-home.png` | Your AI, your open tabs. | Home: three AI tools and recent activity, next to a shop page. |
-| `02-connect.png` | Copy a prompt into your AI. | Connection detail with Copy connection prompt; private credentials stay hidden. |
+| `01-home.png` | Your AI, your open tabs. | Simplified home beside the fictional Northwind shop. |
+| `02-connect.png` | None | Real Chrome showing migma.ai and the minimal app setup panel; only the public MCP URL is visible. |
 | `03-approve-sites.png` | You approve each new site. | "Allow Claude to use northwind.studio?" with Always allow, Allow for 10 minutes, Don't allow, Block this site. |
 | `04-sign-in.png` | You choose what your AI can do. | Tabpass approval window with Read or Read and act. |
 | `05-dark.png` | Light or dark, it follows Chrome. | Home in dark mode. |

@@ -10,12 +10,13 @@ import { isLocalRelay } from '@/lib/format';
 
 import { useNavigation } from '../navigation';
 import { ToolTile } from '@/components/tiles';
+import { Suggestion } from '../parts/Suggestion';
 
 const KIND: Record<ClientGuide['kind'], string> = { web: 'Website', app: 'App', ide: 'Editor', cli: 'Terminal', other: 'Any tool' };
 const POPULAR = 6;
 
-/** Private prompt first, then app-specific setup for clients that need it. */
-function ConnectScreen({ state }: { state: TabpassState }) {
+/** App setup keeps the public server and supported clients together. */
+function ConnectScreen({ state, onChange }: { state: TabpassState; onChange: () => void }) {
   const { push, pop, backLabel } = useNavigation();
   const tools = CLIENTS.filter((client) => client.id !== 'other');
   const row = (guide: ClientGuide) => (
@@ -38,32 +39,24 @@ function ConnectScreen({ state }: { state: TabpassState }) {
 
   return (
     <>
-      <NavBar title="Connect your AI" back={{ label: backLabel, onClick: pop }} />
+      <NavBar title="Connect an app" back={{ label: backLabel, onClick: pop }} />
       <div className="grid gap-6 px-4 pt-4 pb-8">
-        <div className="grid gap-2 px-1">
-          <h2 className="text-[22px] leading-7 font-semibold tracking-[-0.03em]">Start with a prompt</h2>
-          <p className="text-[13px] leading-[18px] text-muted-foreground">Create a private connection prompt, then paste it into an AI that can call MCP servers. No Tabpass sign-in needed.</p>
-          <Pill className="mt-1 justify-self-stretch" onClick={() => push({ name: 'token' })}>Create connection prompt</Pill>
+        <Suggestion state={state} onChange={onChange} />
+        <div className="grid gap-3 px-1">
+          <h2 className="text-[22px] leading-7 font-semibold tracking-[-0.03em]">One link. Your browser.</h2>
+          <CopyRow value={state.mcpUrl} label="Server URL" />
+          <p className="text-[13px] leading-[18px] text-muted-foreground">
+            {isLocalRelay(state.mcpUrl)
+              ? 'This server runs on your computer. Online services such as Claude and ChatGPT cannot connect to it.'
+              : 'Add this server in your app, then approve access here.'}
+          </p>
         </div>
-        <ListSection title="App setup options" footer="Some apps need a connector added in settings before they can use your tabs. Choose your app for its setup steps.">{tools.slice(0, POPULAR).map(row)}</ListSection>
+        <ListSection title="Apps">{tools.slice(0, POPULAR).map(row)}</ListSection>
         <details className="group min-w-0">
           <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between rounded-lg px-1 text-[13px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring/70 [&::-webkit-details-marker]:hidden">
             More tools <ChevronDownIcon className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
           </summary>
           <div className="pt-2">{tools.slice(POPULAR).map(row)}</div>
-        </details>
-        <details className="group min-w-0">
-          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between rounded-lg px-1 text-[13px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring/70 [&::-webkit-details-marker]:hidden">
-            Manual setup <ChevronDownIcon className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
-          </summary>
-          <div className="grid min-w-0 gap-2 pt-2">
-            <CopyRow value={state.mcpUrl} label="Server URL" />
-            <p className="px-1 text-[12px] leading-[17px] text-muted-foreground">
-              {isLocalRelay(state.mcpUrl)
-                ? 'This server runs on your computer. Online services such as Claude and ChatGPT cannot connect to it.'
-                : 'In your AI’s settings, add an MCP server and paste this URL. Then approve the connection in Tabpass.'}
-            </p>
-          </div>
         </details>
       </div>
     </>

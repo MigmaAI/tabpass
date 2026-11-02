@@ -77,7 +77,7 @@ describe('relay', () => {
     const mcp = await client(`${base}/mcp`, agent.token);
 
     const tools = await mcp.listTools();
-    expect(tools.tools.map((tool) => tool.name).sort()).toEqual(BROWSER_TOOLS.map((tool) => tool.name).sort());
+    expect(tools.tools.map((tool) => tool.name).sort()).toEqual(['list_browsers', ...BROWSER_TOOLS.map((tool) => tool.name)].sort());
 
     const result = await mcp.callTool({ name: 'read_page', arguments: { tabId: 7, interactive: true } });
     expect(textOf(result)).toBe('ok:read_page');
@@ -117,7 +117,30 @@ describe('relay', () => {
     const { agents } = await startExtension(async (key) => [await makeAgent(key, 'Migma', 'read')]);
     const mcp = await client(`${base}/mcp`, agents[0]!.token);
     const names = (await mcp.listTools()).tools.map((tool) => tool.name);
-    expect(names.sort()).toEqual(['extract_design', 'get_selection', 'list_tabs', 'read_page', 'screenshot', 'wait_for']);
+    expect(names.sort()).toEqual(['extract_design', 'get_selection', 'list_browsers', 'list_tabs', 'read_page', 'screenshot', 'wait_for']);
+  });
+
+  it('identifies only the browser authorized by each connection, without a browser tool call', async () => {
+    const work = new FakeExtension();
+    const personal = new FakeExtension();
+    extensions.push(work, personal);
+    const workAgent = await makeAgent(work.browserKey, 'My agent', 'read');
+    const personalAgent = await makeAgent(personal.browserKey, 'My agent', 'control');
+    await work.connect(wsUrl, [workAgent], { browserName: 'Work Chrome' });
+    await personal.connect(wsUrl, [personalAgent], { browserName: 'Personal Chrome' });
+
+    const workClient = await client(`${base}/mcp`, workAgent.token);
+    const personalClient = await client(`${base}/mcp/${personalAgent.token}`);
+    expect(JSON.parse(textOf(await workClient.callTool({ name: 'list_browsers', arguments: {} })))).toEqual({
+      browsers: [{ id: await work.browserId(), name: 'Work Chrome', online: true, access: 'read' }],
+      scope: 'this_connection',
+    });
+    expect(JSON.parse(textOf(await personalClient.callTool({ name: 'list_browsers', arguments: {} })))).toEqual({
+      browsers: [{ id: await personal.browserId(), name: 'Personal Chrome', online: true, access: 'control' }],
+      scope: 'this_connection',
+    });
+    expect(work.calls).toHaveLength(0);
+    expect(personal.calls).toHaveLength(0);
   });
 
   it('accepts the token in the URL path for connector UIs that only take a URL', async () => {
@@ -152,6 +175,9 @@ describe('relay', () => {
     const result = await mcp.callTool({ name: 'list_tabs', arguments: {} });
     expect(result.isError).toBe(true);
     expect(textOf(result)).toMatch(/offline/);
+    const discovery = await mcp.callTool({ name: 'list_browsers', arguments: {} });
+    expect(discovery.isError).toBe(true);
+    expect(textOf(discovery)).toMatch(/offline/);
   });
 
   it('stops serving an agent once the browser removes it', async () => {
@@ -163,6 +189,7 @@ describe('relay', () => {
     extension.send({ type: 'agents', agents: [] });
     await new Promise((resolve) => setTimeout(resolve, 50));
     await expect(mcp.callTool({ name: 'list_tabs', arguments: {} })).rejects.toThrow(/401|was removed/);
+    await expect(mcp.callTool({ name: 'list_browsers', arguments: {} })).rejects.toThrow(/401|was removed/);
   });
 
   it('times out when the browser never answers', async () => {
@@ -202,11 +229,14 @@ describe('relay', () => {
     const second = new FakeExtension();
     Object.defineProperty(second, 'browserKey', { value: extension.browserKey });
     extensions.push(second);
-    await second.connect(wsUrl, agents);
+    await second.connect(wsUrl, agents, { browserName: 'Renamed Chrome' });
     second.onCall = (call): void => second.reply(call.id, 'from-second');
 
     const mcp = await client(`${base}/mcp`, agents[0]!.token);
     expect(textOf(await mcp.callTool({ name: 'list_tabs', arguments: {} }))).toBe('from-second');
+    expect(JSON.parse(textOf(await mcp.callTool({ name: 'list_browsers', arguments: {} }))).browsers[0]).toMatchObject({
+      id: await extension.browserId(), name: 'Renamed Chrome', online: true,
+    });
     expect((await relay.directory.stats()).browsers).toBe(1);
   });
 

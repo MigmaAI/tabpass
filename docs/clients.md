@@ -1,10 +1,14 @@
 # Connect any AI tool
 
-Start with **Create connection prompt** in Tabpass. Name the connection, choose **Read** or **Read and act**, then copy the prompt and paste it into an AI that can call MCP servers or make HTTP requests. No separate Tabpass sign-in is needed.
+These steps describe extension 0.3.3. Check **Settings → About** for your installed version.
+
+[Install Tabpass from the Chrome Web Store](https://chromewebstore.google.com/detail/tabpass/dfkcbinlgcemppeealhaicfdljcfnfdp) in the browser you want your AI to use.
+
+Start with **Connect your AI** in Tabpass. Choose **Read** or **Read and act**, click **Continue**, then **Copy prompt** and paste it into an AI that can call MCP servers or make HTTP requests. No separate Tabpass sign-in is needed.
 
 The prompt carries a private access link. Keep it out of public chats and shared documents. **Disconnect** in Tabpass revokes access. Copying the prompt does not prove your AI connected: check the connection's **Last used** and Tabpass's activity after asking it to list your tabs.
 
-Some apps need connector setup first. **App setup options** in the side panel links to the guides below. For OAuth, add `https://tabs.migma.ai/mcp` as a remote MCP server and approve the connection in Tabpass. Migma has a dedicated [Connect browser action](#migma).
+Some apps need connector setup first. **Settings → App setup options** links to the guides below. For OAuth, add `https://tabs.migma.ai/mcp` as a remote MCP server and approve the connection in Tabpass. Migma has a dedicated [Connect browser action](#migma).
 
 For manual setup, create a connection prompt, then open **Advanced setup** to copy its private server URL, header or config (see [Tools without OAuth](#tools-without-oauth)).
 
@@ -103,6 +107,90 @@ url = "https://tabs.migma.ai/mcp"
 ```
 
 In the Codex app you can also go to **Settings → MCP servers → Add server**, then **Authenticate**.
+
+## Hermes Agent
+
+Hermes supports remote HTTP MCP directly. No bridge is needed. The agent can run on another computer or a server while Tabpass runs in your Chrome browser.
+
+For a private connection, copy the token from Tabpass's **Advanced setup** and save it as `TABPASS_TOKEN` in Hermes's secret environment (`~/.hermes/.env`). Add this to `~/.hermes/config.yaml`:
+
+```yaml
+mcp_servers:
+  tabpass:
+    url: "https://tabs.migma.ai/mcp"
+    headers:
+      Authorization: "Bearer ${TABPASS_TOKEN}"
+```
+
+Check the connection:
+
+```bash
+hermes mcp test tabpass
+```
+
+Start a new chat, or run `/reload-mcp` in an existing chat, then ask Hermes to list your tabs. No separate Tabpass account is needed; the token grants the access you chose in Tabpass.
+
+If you prefer browser approval through OAuth:
+
+```bash
+hermes mcp add tabpass --url https://tabs.migma.ai/mcp --auth oauth
+hermes mcp test tabpass
+```
+
+Follow the authorization link and approve in Tabpass. If you need to authorize again, run `hermes mcp login tabpass`. A remote machine's OAuth callback may need SSH port forwarding; the private-token method above does not need a browser callback.
+
+Sources, checked November 2, 2026: [Hermes MCP guide](https://hermes-agent.nousresearch.com/docs/user-guide/features/mcp), [configuration and environment variables](https://hermes-agent.nousresearch.com/docs/reference/mcp-config-reference), and [CLI commands](https://hermes-agent.nousresearch.com/docs/reference/cli-commands). These document the supported setup; a successful `mcp test` and a real tab read verify your installation.
+
+## OpenClaw
+
+OpenClaw supports remote Streamable HTTP MCP directly. No bridge is needed.
+
+For a private connection, make `TABPASS_TOKEN` available to the OpenClaw Gateway through its secret environment. Use the token from Tabpass's **Advanced setup**. Add this server to `mcp.servers` in your OpenClaw config:
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "tabpass": {
+        "url": "https://tabs.migma.ai/mcp",
+        "transport": "streamable-http",
+        "headers": {
+          "Authorization": "Bearer ${TABPASS_TOKEN}"
+        }
+      }
+    }
+  }
+}
+```
+
+Set the variable where the Gateway runs, which may be different from your terminal. Check the connection with `openclaw mcp doctor tabpass --probe`, then ask your agent to list your tabs. Existing tool policies still apply.
+
+For OAuth instead:
+
+```bash
+openclaw mcp add tabpass --url https://tabs.migma.ai/mcp --transport streamable-http --auth oauth
+```
+
+In the Control UI, open **Settings → MCP → Sign in** and approve in Tabpass. For CLI sign-in, OpenClaw requires the Gateway to be stopped before `openclaw mcp login tabpass`; restart it afterward. Its printed callback instructions cover sign-in from a remote machine.
+
+Sources, checked November 2, 2026: [OpenClaw MCP guide](https://docs.openclaw.ai/tools/mcp), [MCP configuration](https://docs.openclaw.ai/gateway/config-extensions), and [CLI flags](https://github.com/openclaw/openclaw/blob/main/src/cli/mcp-cli.ts). These document the supported setup; they do not replace testing your installed version with Tabpass.
+
+### More than one browser
+
+Install and connect Tabpass separately in each Chrome browser or profile you want your agent to use. Give each MCP connection a clear name, such as `tabpass_work` and `tabpass_personal`, and use that browser's own token for each entry. One token does not grant access to your other browsers.
+
+Hermes uses those names under `mcp_servers`; OpenClaw uses them under `mcp.servers`. Ask the agent to use the named connection and list its tabs before working. Keep the target Chrome browser and Tabpass online. Read access, browser control, and site approvals remain separate for each connection.
+
+This release's relay provides `list_browsers` on normal MCP connections. Call it on each configured Tabpass server to identify the browser by ID, name, current online state and access level, then use that server for `list_tabs` and subsequent actions. The response contains only the browser approved for that connection:
+
+```json
+{
+  "browsers": [{ "id": "example-browser-id", "name": "Work Chrome", "online": true, "access": "read" }],
+  "scope": "this_connection"
+}
+```
+
+Offline connections return an error. `online` reports the browser's connection to the relay, not which window has focus or whether browser access is paused; there are no focus or pause fields in this response. If two names match, ask which connection the person means. Older self-hosted relays may not expose this tool; use the configured connection names and ask when uncertain. The development-only account integration can list several authorized browsers and accepts a browser ID or unique name. Ordinary MCP credentials never inherit that account-wide access.
 
 ## VS Code (GitHub Copilot)
 
@@ -284,7 +372,7 @@ Junie reads the same JSON from `~/.junie/mcp/mcp.json`.
 
 ## Tools without OAuth
 
-Create a connection in the side panel with **Create connection prompt**, then open **Advanced setup**. Its token looks like `tp_<16 chars>.<43 chars>`. Keep it private: it opens your browser. Use it one of three ways.
+Create a connection with **Connect your AI → Continue**, then open **Advanced setup**. Its token looks like `tp_<16 chars>.<43 chars>`. Keep it private: it opens your browser. Use it one of three ways.
 
 **1. Header.** Send `Authorization: Bearer tp_…` with the universal URL:
 

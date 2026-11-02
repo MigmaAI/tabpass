@@ -9,8 +9,6 @@ import { ACCESS_HINT, ACCESS_LABEL } from '@/lib/format';
 
 import { useNavigation } from '../navigation';
 
-const SUGGESTED = ['Claude', 'ChatGPT', 'Cursor', 'Codex'];
-
 /** Create the private connection used by the copyable prompt. Always starts at Read. */
 function TokenScreen({ onChange }: { onChange: () => void }) {
   const { pop, replace, backLabel } = useNavigation();
@@ -40,31 +38,10 @@ function TokenScreen({ onChange }: { onChange: () => void }) {
 
   return (
     <>
-      <NavBar title="Connection prompt" back={{ label: backLabel, onClick: pop }} />
+      <NavBar title="Connect your AI" back={{ label: backLabel, onClick: pop }} />
       <form onSubmit={submit} className="grid gap-6 px-4 pt-4 pb-8">
-        <div className="grid gap-1 px-1"><h2 className="text-[23px] leading-7 font-semibold tracking-[-0.04em]">Choose its access</h2><p className="text-[13px] leading-[18px] text-muted-foreground">Next, copy the private prompt into your AI. You can change its access or disconnect at any time.</p></div>
-        <ListSection title="Connection name" footer="So you can recognize it later.">
-          <input
-            id="agent-name"
-            aria-label="Connection name"
-            value={label}
-            onChange={(event) => setLabel(event.target.value)}
-            placeholder="My AI"
-            disabled={saving}
-            maxLength={40}
-            autoFocus
-            autoComplete="off"
-            className="field-surface h-12 w-full rounded-xl px-3 text-[14px] outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/70"
-          />
-        </ListSection>
-        <div className="-mt-3 flex flex-wrap gap-1.5 px-1">
-          {SUGGESTED.map((name) => (
-            <Pill key={name} type="button" size="sm" variant="secondary" disabled={saving} onClick={() => setLabel(name)}>
-              {name}
-            </Pill>
-          ))}
-        </div>
-        <ListSection title="It can" footer={ACCESS_HINT[access]}>
+        <p className="px-1 text-[14px] leading-5 text-muted-foreground">Choose what your AI can do. Next, copy a prompt and paste it into your AI.</p>
+        <ListSection title="Access" footer={ACCESS_HINT[access]}>
           <div className="p-2">
             <Segmented<Access>
               label="Access"
@@ -77,9 +54,17 @@ function TokenScreen({ onChange }: { onChange: () => void }) {
             />
           </div>
         </ListSection>
+        <details className="group">
+          <summary className="min-h-11 cursor-pointer rounded-lg py-3 px-1 text-[13px] text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/70">Name this connection</summary>
+          <div className="pt-2">
+            <ListSection title="Name">
+              <input id="agent-name" aria-label="Connection name" value={label} onChange={(event) => setLabel(event.target.value)} disabled={saving} maxLength={40} autoComplete="off" className="field-surface h-12 w-full rounded-xl px-3 text-[14px] outline-none focus-visible:ring-2 focus-visible:ring-ring/70" />
+            </ListSection>
+          </div>
+        </details>
         {error && <p role="alert" className="px-1 text-[13px] leading-[18px] text-destructive">{error}</p>}
         <Pill type="submit" disabled={saving || !label.trim()} className="justify-self-stretch">
-          {saving ? 'Creating…' : 'Create connection prompt'}
+          {saving ? 'Creating…' : 'Continue'}
         </Pill>
       </form>
     </>
