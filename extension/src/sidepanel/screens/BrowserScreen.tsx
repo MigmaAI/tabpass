@@ -31,7 +31,7 @@ function BrowserScreen({ state, onChange }: { state: TabpassState; onChange: () 
       setError(failure instanceof Error ? failure.message : String(failure));
     }
   };
-  const field = 'field-surface h-12 min-w-0 flex-1 rounded-xl px-3 text-[14px] outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/70';
+  const field = 'field-surface h-11 w-full min-w-0 flex-1 rounded-[11px] px-3 text-[14px] outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/70';
 
   return (
     <>
@@ -43,17 +43,17 @@ function BrowserScreen({ state, onChange }: { state: TabpassState; onChange: () 
           <ListRow title="Activity" onClick={() => push({ name: 'activity' })} />
           <ListRow title="App setup options" onClick={() => push({ name: 'connect' })} />
         </ListSection>
-        <form onSubmit={save('setBrowserName', { browserName: name })}>
+        <form className="min-w-0" onSubmit={save('setBrowserName', { browserName: name })}>
           <ListSection title="Name" footer="Agents use it to pick between your browsers.">
-            <div className="flex items-center pr-2">
+            <div className="flex min-w-0 items-center gap-2">
               <input id="browser-name" aria-label="Browser name" value={name} onChange={(event) => setName(event.target.value)} maxLength={60} className={field} />
-              <Pill type="submit" size="sm" variant="secondary">
+              <Pill type="submit" variant="secondary" className="h-11 px-4">
                 Save
               </Pill>
             </div>
           </ListSection>
         </form>
-        <form onSubmit={save('setRelayUrl', { relayUrl })}>
+        <form className="min-w-0" onSubmit={save('setRelayUrl', { relayUrl })}>
           <ListSection
             title="Relay"
             footer={
@@ -66,7 +66,7 @@ function BrowserScreen({ state, onChange }: { state: TabpassState; onChange: () 
               )
             }
           >
-            <div className="flex items-center pr-2">
+            <div className="flex min-w-0 items-center gap-2">
               <input
                 id="relay-url"
                 aria-label="Relay address"
@@ -76,7 +76,7 @@ function BrowserScreen({ state, onChange }: { state: TabpassState; onChange: () 
                 autoComplete="off"
                 className={`${field} font-mono text-[13px]`}
               />
-              <Pill type="submit" size="sm" variant="secondary">
+              <Pill type="submit" variant="secondary" className="h-11 px-4">
                 Save
               </Pill>
             </div>

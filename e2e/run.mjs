@@ -244,7 +244,11 @@ try {
     await panel.getByRole('status').getByText(/^Connected · Chrome on/).waitFor();
     assert.equal((await relay.directory.stats()).browsers, 1);
     await row('Connect your AI').waitFor();
-    assert.equal(await panel.getByRole('button', { name: /^Connections/ }).getAttribute('aria-expanded'), 'false');
+    for (const name of ['Claude', 'ChatGPT', 'Codex', 'Cursor', 'Hermes', 'OpenClaw']) {
+      await panel.getByRole('button', { name: `Set up ${name}`, exact: true }).waitFor();
+    }
+    await panel.getByRole('button', { name: 'More tools', exact: true }).waitFor();
+    assert.equal(await panel.getByRole('button', { name: /^Connections/ }).getAttribute('aria-expanded'), 'true');
     for (const name of ['App setup options', 'Activity', 'Website access']) {
       assert.equal(await panel.getByRole('button', { name, exact: true }).count(), 0, `${name} belongs in Settings`);
     }
@@ -282,8 +286,9 @@ try {
     await row('Connect your AI').click();
     assert.equal(await panel.locator('#agent-name').inputValue(), 'My AI');
     assert.equal(await panel.getByRole('radio', { name: 'Read', exact: true }).getAttribute('aria-checked'), 'true');
-    await panel.getByText('Name this connection', { exact: true }).click();
+    assert.equal(await panel.locator('#agent-name').isVisible(), true, 'Connection name is visible without a disclosure');
     await panel.locator('#agent-name').fill('Claude');
+    await shoot(panel, 'connect-access.png', { fullPage: true });
     assert.equal(await panel.getByRole('radio', { name: 'Read', exact: true }).getAttribute('aria-checked'), 'true');
     await panel.getByRole('radio', { name: 'Read', exact: true }).focus();
     // Radix selects on deferred focus while the physical arrow key remains down.
@@ -339,8 +344,7 @@ try {
     assert.notEqual(idOf(relayKey), idOf(settings.browserKey));
     await shoot(panel, 'agent.png', { fullPage: true });
     await goHome();
-    assert.equal(await row('Claude').count(), 0, 'Saved connections stay hidden until Connections is opened');
-    await openConnections();
+    assert.equal(await row('Claude').isVisible(), true, 'Saved connections are visible on Home');
     await row('Claude').waitFor();
   });
 
@@ -608,11 +612,31 @@ try {
     await panel.getByRole('status').getByText(`Connected · ${'W'.repeat(60)}`).waitFor();
     for (const colorScheme of ['light', 'dark']) {
       await panel.emulateMedia({ colorScheme, reducedMotion: 'reduce' });
-      for (const width of [320, 380]) {
+      for (const width of [300, 320, 380]) {
         await panel.setViewportSize({ width, height: 860 });
         assert.equal(await panel.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `Home overflow at ${width}px in ${colorScheme}`);
         await shoot(panel, `home-${colorScheme}-${width}.png`, { fullPage: true });
         await row('Settings').click();
+        for (const inputId of ['browser-name', 'relay-url']) {
+          const geometry = await panel.locator(`#${inputId}`).evaluate((input) => {
+            const button = input.closest('form').querySelector('button[type="submit"]');
+            const fieldRect = input.getBoundingClientRect();
+            const buttonRect = button.getBoundingClientRect();
+            return {
+              fieldHeight: fieldRect.height,
+              buttonHeight: buttonRect.height,
+              gap: buttonRect.left - fieldRect.right,
+              right: buttonRect.right,
+              viewport: innerWidth,
+            };
+          });
+          assert.equal(geometry.fieldHeight, 44, `${inputId} field height`);
+          assert.equal(geometry.buttonHeight, 44, `${inputId} Save height`);
+          assert.equal(geometry.gap, 8, `${inputId} Save spacing`);
+          assert.ok(geometry.right <= geometry.viewport, `${inputId} fits at ${width}px in ${colorScheme}`);
+        }
+        assert.equal(await panel.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `Settings overflow at ${width}px in ${colorScheme}`);
+        await shoot(panel, `settings-${colorScheme}-${width}.png`, { fullPage: true });
         await row('App setup options').click();
         assert.equal(await panel.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `Connect overflow at ${width}px in ${colorScheme}`);
         await shoot(panel, `connect-${colorScheme}-${width}.png`, { fullPage: true });

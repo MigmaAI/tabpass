@@ -22,7 +22,7 @@ Connect compatible AI apps to your open tabs. Share page content and allow brows
 
 ## Description
 
-For extension 0.3.3. Plain text. The store does not render Markdown, so paste it as is.
+For extension 0.3.4. Plain text. The store does not render Markdown, so paste it as is.
 
 ```
 Your AI can work with the pages you already have open, signed in as you. Use it to research, read references or work through browser tasks. You approve each new site first.
@@ -126,10 +126,10 @@ Promo images must not claim store status ("Editor's choice", "#1") and should no
 
 ## Screenshots
 
-Five 1280x800 PNGs in `store/images/` show the 0.3.3 production UI. `02-connect.png` is a genuine Chrome capture with the public Migma website and Tabpass side panel. The other four use the fictional Northwind Studio shop and sample connections in a controlled local test; they illustrate the real extension UI, not customer sessions. Regenerate and inspect images after UI changes:
+Five 1280x800 PNGs in `store/images/` show the extension UI with generated storefront artwork and synthetic connections. They are illustrative examples, never captures of a personal browser. Regenerate and inspect images after UI changes:
 
 ```bash
-yarn --cwd relay build && cd e2e && STORE_BROWSER_SCREENSHOT=/absolute/path/chrome-capture.png xvfb-run -a node store-assets.mjs
+yarn --cwd relay build && cd e2e && xvfb-run -a node store-assets.mjs
 ```
 
 The script serves the relay and fictional `northwind.studio` product page locally. It also serves a local placeholder at `chatgpt.com` for the OAuth return address; it does not connect to that service. Product content and connection credentials are synthetic; bundled app names and icons identify real compatibility guides. The screenshots show the actual extension UI. Run the script again after any UI change, so the images match the build you submit.
@@ -137,7 +137,7 @@ The script serves the relay and fictional `northwind.studio` product page locall
 | File | Caption (in the image) | What it shows |
 |---|---|---|
 | `01-home.png` | Your AI, your open tabs. | Simplified home beside the fictional Northwind shop. |
-| `02-connect.png` | None | Real Chrome showing migma.ai and the minimal app setup panel; only the public MCP URL is visible. |
+| `02-connect.png` | Copy a prompt into your AI. | Generated storefront with a synthetic connection; private setup values stay hidden. |
 | `03-approve-sites.png` | You approve each new site. | "Allow Claude to use northwind.studio?" with Always allow, Allow for 10 minutes, Don't allow, Block this site. |
 | `04-sign-in.png` | You choose what your AI can do. | Tabpass approval window with Read or Read and act. |
 | `05-dark.png` | Light or dark, it follows Chrome. | Home in dark mode. |
