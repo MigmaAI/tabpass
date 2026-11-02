@@ -136,7 +136,12 @@ describe.skipIf(!RUN)('Cloudflare Worker relay (workerd)', () => {
     await browser({ extension, agents: [agent] });
     expect(extension.messages[0]).toEqual({ type: 'welcome', browserId: await extension.browserId(), mcpUrl: `${base}/mcp` });
     const client = await mcp(agent.token);
-    expect((await client.listTools()).tools).toHaveLength(6);
+    expect((await client.listTools()).tools).toHaveLength(7);
+    expect(JSON.parse(textOf(await client.callTool({ name: 'list_browsers', arguments: {} })))).toEqual({
+      browsers: [{ id: await extension.browserId(), name: 'Test Chrome', online: true, access: 'read' }],
+      scope: 'this_connection',
+    });
+    expect(extension.calls).toHaveLength(0);
     expect(textOf(await client.callTool({ name: 'list_tabs', arguments: {} }))).toBe('ok:list_tabs');
     expect(extension.calls[0]).toMatchObject({ tool: 'list_tabs', tokenHash: agent.tokenHash });
     await client.close();
@@ -147,6 +152,30 @@ describe.skipIf(!RUN)('Cloudflare Worker relay (workerd)', () => {
     const since = extension.messages.length;
     extension.send({ type: 'ping' });
     expect(await extension.next('pong', since)).toEqual({ type: 'pong' });
+  });
+
+  it('keeps browser discovery separate for two token connections', async () => {
+    const work = new FakeExtension();
+    const personal = new FakeExtension();
+    const workAgent = await makeAgent(work.browserKey, 'Same client', 'read');
+    const personalAgent = await makeAgent(personal.browserKey, 'Same client', 'control');
+    await browser({ extension: work, agents: [workAgent], name: 'Work Chrome' });
+    await browser({ extension: personal, agents: [personalAgent], name: 'Personal Chrome' });
+    const workClient = await mcp(workAgent.token);
+    const personalClient = await mcp(personalAgent.token);
+    try {
+      expect(JSON.parse(textOf(await workClient.callTool({ name: 'list_browsers', arguments: {} })))).toEqual({
+        browsers: [{ id: await work.browserId(), name: 'Work Chrome', online: true, access: 'read' }], scope: 'this_connection',
+      });
+      expect(JSON.parse(textOf(await personalClient.callTool({ name: 'list_browsers', arguments: {} })))).toEqual({
+        browsers: [{ id: await personal.browserId(), name: 'Personal Chrome', online: true, access: 'control' }], scope: 'this_connection',
+      });
+      expect(work.calls).toHaveLength(0);
+      expect(personal.calls).toHaveLength(0);
+    } finally {
+      await workClient.close();
+      await personalClient.close();
+    }
   });
 
   it('closes a socket that claims another browser id', async () => {
@@ -166,12 +195,14 @@ describe.skipIf(!RUN)('Cloudflare Worker relay (workerd)', () => {
     await extension.close();
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(textOf(await client.callTool({ name: 'list_tabs', arguments: {} }))).toMatch(/offline/);
+    expect(textOf(await client.callTool({ name: 'list_browsers', arguments: {} }))).toMatch(/offline/);
 
     const again = new FakeExtension();
     Object.defineProperty(again, 'browserKey', { value: extension.browserKey });
     again.onCall = (call): void => again.reply(call.id, 'from-new-socket');
-    await browser({ extension: again, agents: [agent] });
+    await browser({ extension: again, agents: [agent], name: 'Work Chrome' });
     expect(textOf(await client.callTool({ name: 'list_tabs', arguments: {} }))).toBe('from-new-socket');
+    expect(JSON.parse(textOf(await client.callTool({ name: 'list_browsers', arguments: {} }))).browsers[0].name).toBe('Work Chrome');
     await client.close();
   });
 

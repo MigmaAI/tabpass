@@ -38,7 +38,7 @@ export interface RelayApp {
 
 const MAX_BODY_BYTES = 1_000_000;
 const DEFAULT_RATE_LIMIT = 300;
-const DEFAULT_INSTALL_URL = 'https://github.com/migmaai/tabpass#install';
+const DEFAULT_INSTALL_URL = 'https://chromewebstore.google.com/detail/tabpass/dfkcbinlgcemppeealhaicfdljcfnfdp';
 const ACCOUNT_TOOLS = new Map(accountTools().map((tool) => [tool.name, tool]));
 
 const CORS_HEADERS: Record<string, string> = {
@@ -147,7 +147,7 @@ export function createRelayApp(options: RelayAppOptions): RelayApp {
     // While the browser is offline the relay cannot see the agent's access level, so it lists every
     // tool and each call answers "browser offline".
     const access = lookup.status === 'ok' ? lookup.agent.access : null;
-    return withCors(await serveMcp(request, createTokenMcpServer(directory, token, access), body));
+    return withCors(await serveMcp(request, createTokenMcpServer(directory, token, access, lookup), body));
   }
 
   /** Provider-to-relay API. Not for agents: it acts for any person the provider names. */

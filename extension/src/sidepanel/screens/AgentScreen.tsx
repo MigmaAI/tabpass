@@ -38,14 +38,14 @@ function AgentScreen({ state, id, onChange }: { state: TabpassState; id: string;
   const setup = tokenSetup(agent.mcpUrl, agent.token);
   const manual = agent.source !== 'oauth' && agent.source !== 'web';
   const availabilityHint = state.settings.paused
-    ? 'AI access is paused. Turn it on from the home screen before using the prompt.'
+    ? 'AI access is paused. Turn it on in Settings before using the prompt.'
     : agent.relay.state === 'connecting'
       ? 'Browser is still connecting. Wait until it is online before using the prompt.'
       : agent.relay.state !== 'connected'
         ? 'Browser is offline. Wait until it is online before using the prompt.'
         : null;
   const connectionHint = [
-    isLocalRelay(agent.mcpUrl) ? 'This server runs on your computer. Cloud AI apps cannot reach it; use a public server in This browser.' : null,
+    isLocalRelay(agent.mcpUrl) ? 'This server runs on your computer. Cloud AI apps cannot reach it; use a public server in Settings.' : null,
     availabilityHint,
   ].filter(Boolean).join(' ');
   const copyPrompt = async (): Promise<void> => {
@@ -72,15 +72,15 @@ function AgentScreen({ state, id, onChange }: { state: TabpassState; id: string;
           <section className="grid gap-3 px-1" aria-label="Connection prompt">
             <div className="grid gap-1">
               <h2 className="text-[18px] font-semibold tracking-[-0.025em]">Paste this into your AI</h2>
-              <p className="text-[13px] leading-[18px] text-muted-foreground">The prompt gives your AI a private link to your open tabs. It needs tools that can call an MCP server; some apps need setup in their settings first.</p>
+              <p className="text-[13px] leading-[18px] text-muted-foreground">Copy the prompt and paste it into your AI.</p>
             </div>
             {connectionHint && <p role="status" className="text-[12px] leading-[17px] text-muted-foreground">{connectionHint}</p>}
             <Pill onClick={copyPrompt} disabled={copying} className="justify-self-stretch">
               {copiedAccess === agent.access ? <CheckIcon /> : <CopyIcon />}
-              {copying ? 'Copying…' : 'Copy connection prompt'}
+              {copying ? 'Copying…' : 'Copy prompt'}
             </Pill>
             {copiedAccess === agent.access && <p role="status" className="text-[12px] leading-[17px] text-muted-foreground">Copied. Paste it into your AI when the browser is online.</p>}
-            {copyError && <p role="alert" className="text-[12px] leading-[17px] text-destructive">Could not copy the prompt. Try Copy connection prompt again.</p>}
+            {copyError && <p role="alert" className="text-[12px] leading-[17px] text-destructive">Could not copy. Try again.</p>}
             <p className="text-[12px] leading-[17px] text-muted-foreground">Anyone with this private link has the access you allow. Disconnect to revoke it.</p>
           </section>
         )}
