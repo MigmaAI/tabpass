@@ -54,14 +54,9 @@ function TokenScreen({ onChange }: { onChange: () => void }) {
             />
           </div>
         </ListSection>
-        <details className="group">
-          <summary className="min-h-11 cursor-pointer rounded-lg py-3 px-1 text-[13px] text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/70">Name this connection</summary>
-          <div className="pt-2">
-            <ListSection title="Name">
-              <input id="agent-name" aria-label="Connection name" value={label} onChange={(event) => setLabel(event.target.value)} disabled={saving} maxLength={40} autoComplete="off" className="field-surface h-12 w-full rounded-xl px-3 text-[14px] outline-none focus-visible:ring-2 focus-visible:ring-ring/70" />
-            </ListSection>
-          </div>
-        </details>
+        <ListSection title="Name">
+          <input id="agent-name" aria-label="Connection name" value={label} onChange={(event) => setLabel(event.target.value)} disabled={saving} maxLength={40} autoComplete="off" className="field-surface h-11 w-full rounded-[11px] px-3 text-[14px] outline-none focus-visible:ring-2 focus-visible:ring-ring/70" />
+        </ListSection>
         {error && <p role="alert" className="px-1 text-[13px] leading-[18px] text-destructive">{error}</p>}
         <Pill type="submit" disabled={saving || !label.trim()} className="justify-self-stretch">
           {saving ? 'Creating…' : 'Continue'}

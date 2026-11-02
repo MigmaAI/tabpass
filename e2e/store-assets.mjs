@@ -9,11 +9,9 @@
 //
 // Writes store/images/: five 1280x800 screenshots, the 440x280 small tile and the 1400x560 marquee.
 // RAW_DIR=/some/dir also keeps the raw shots.
-// STORE_SITE_SCREENSHOT=/absolute/path/site.png uses an existing, approved browser capture
-// as the visual background. The local fixture still owns the simulated approval flow.
-// Such frames are illustrative composites, not evidence of access to the pictured live site.
-// STORE_BROWSER_SCREENSHOT=/absolute/path/chrome.png replaces 02 with an actual browser
-// capture, fitted unchanged onto a neutral 1280x800 canvas without a simulated frame.
+// Public images use a bundled, generated fashion storefront and synthetic browser data.
+// Never include a personal browser screenshot, account avatar, or browsing history.
+// The local fixture still owns the simulated approval flow.
 
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -116,7 +114,6 @@ async function shootPanel(panel, name) {
 /** Create a private prompt, exposing the key only to the local synthetic agent. */
 async function keyLink(panel, name, control) {
   await panel.getByRole('button', { name: 'Connect your AI', exact: true }).click();
-  await panel.getByText('Name this connection', { exact: true }).click();
   await panel.getByRole('textbox', { name: 'Connection name' }).fill(name);
   if (control) await panel.getByRole('radio', { name: 'Read and act' }).click();
   await panel.getByRole('button', { name: 'Continue', exact: true }).click();
@@ -220,7 +217,6 @@ try {
   await panel.bringToFront();
   await panel.getByRole('button', { name: /^Connections 3$/ }).waitFor();
   await shootPanel(panel, 'home.png');
-  await panel.getByRole('button', { name: /^Connections/ }).click();
   await panel.getByRole('button', { name: 'Claude', exact: true }).click();
   await panel.getByRole('button', { name: 'Copy prompt', exact: true }).waitFor();
   assert.equal(await panel.locator('details[open]').count(), 0, 'Private setup must stay collapsed in store screenshots');
@@ -288,9 +284,7 @@ function tile({ width, height }) {
 }
 
 const fixture = await image('site.png');
-const site = process.env.STORE_SITE_SCREENSHOT
-  ? `data:image/png;base64,${(await readFile(process.env.STORE_SITE_SCREENSHOT)).toString('base64')}`
-  : fixture;
+const site = `data:image/png;base64,${(await readFile(join(here, 'fixtures', 'store', 'maison.png'))).toString('base64')}`;
 const home = await image('home.png');
 const screens = [
   ['01-home.png', { caption: 'Your AI, your open tabs.', page: site, panel: home }],
@@ -310,13 +304,11 @@ const screens = [
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined });
 const tab = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 for (const [name, options] of screens) {
-  let content = frame(options);
-  if (name === '02-connect.png' && process.env.STORE_BROWSER_SCREENSHOT) {
-    const capture = `data:image/png;base64,${(await readFile(process.env.STORE_BROWSER_SCREENSHOT)).toString('base64')}`;
-    content = `<!doctype html><html><head><style>*{box-sizing:border-box}body{margin:0;width:1280px;height:800px;background:#faf9f7;display:flex;align-items:center;justify-content:center}img{display:block;max-width:1280px;max-height:800px;width:auto;height:auto}</style></head><body><img src="${capture}" alt="Tabpass in Chrome on a real website"></body></html>`;
-  }
-  await tab.setContent(content, { waitUntil: 'load' });
+  await tab.setContent(frame(options), { waitUntil: 'load' });
   await tab.screenshot({ path: join(out, name) });
+  if (name === '01-home.png') {
+    await tab.screenshot({ path: join(out, 'browser-demo.png'), clip: { x: 70, y: 132, width: 1140, height: 640 } });
+  }
 }
 for (const [name, width, height] of [
   ['promo-small-440x280.png', 440, 280],

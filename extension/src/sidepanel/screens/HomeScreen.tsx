@@ -3,15 +3,19 @@ import { ChevronDownIcon, SettingsIcon } from 'lucide-react';
 import { IconTile } from '@/components/ios/IconTile';
 import { ListRow, ListSection } from '@/components/ios/List';
 import { Pill } from '@/components/ios/Pill';
+import { AgentTile, ToolTile } from '@/components/tiles';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { send, type TabpassState } from '@/lib/api';
+import { CLIENTS } from '@/lib/clients';
 import { ACCESS_LABEL, agentConnectionStatus, usedText } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 import { useNavigation } from '../navigation';
 import { SitePromptCard } from '../parts/SitePromptCard';
-import { AgentTile } from '@/components/tiles';
 import { WelcomeCard } from '../parts/WelcomeCard';
+
+const HOME_TOOLS = ['claude', 'chatgpt', 'codex', 'cursor', 'hermes', 'openclaw']
+  .flatMap((id) => CLIENTS.filter((client) => client.id === id));
 
 interface ScreenProps {
   state: TabpassState | null;
@@ -26,14 +30,14 @@ function statusLine(state: TabpassState): { text: string; tone: 'ok' | 'wait' | 
   return { text: 'Connecting…', tone: 'wait' };
 }
 
-/** One connection action; saved connections and settings stay out of its way. */
+/** One connection prompt action, visible app guides, and saved connections. */
 function HomeScreen({ state, onChange }: ScreenProps) {
   const { push } = useNavigation();
   const status = state ? statusLine(state) : { text: 'Opening Tabpass…', tone: 'wait' as const };
   const connectionCount = state ? state.agents.length + state.providers.filter((provider) => provider.account).length : 0;
 
   return (
-    <div className="grid gap-7 px-5 pt-3 pb-8" aria-busy={!state}>
+    <div className="grid gap-5 px-5 pt-3 pb-8" aria-busy={!state}>
       <header className="flex min-w-0 items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <span aria-hidden className={cn('size-1.5 shrink-0 rounded-full', status.tone === 'ok' ? 'bg-success' : status.tone === 'wait' ? 'bg-warning' : 'bg-muted-foreground')} />
@@ -49,7 +53,7 @@ function HomeScreen({ state, onChange }: ScreenProps) {
         <SitePromptCard key={prompt.id} prompt={prompt} onChange={onChange} />
       ))}
 
-      <section className="grid gap-5 pt-4 pb-2" aria-label="Connect your AI">
+      <section className="grid gap-5 pt-2" aria-label="Connect your AI">
         <div className="grid gap-2">
           <h1 className="text-[28px] leading-[32px] font-semibold tracking-[-0.045em] outline-none">Your tabs, in your AI.</h1>
           <p className="text-[14px] leading-5 text-muted-foreground">Give your AI access to the pages you have open.</p>
@@ -60,8 +64,23 @@ function HomeScreen({ state, onChange }: ScreenProps) {
         </div>
       </section>
 
+      <section className="grid gap-2" aria-label="AI apps">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-[12px] font-semibold text-muted-foreground">AI apps</h2>
+          <Pill variant="plain" size="sm" className="px-1" disabled={!state} onClick={() => push({ name: 'connect' })}>More tools</Pill>
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          {HOME_TOOLS.map((guide) => (
+            <Pill key={guide.id} aria-label={`Set up ${guide.name}`} variant="plain" className="min-w-0 flex-col gap-2 px-1 py-2 text-[12px] text-foreground" disabled={!state} onClick={() => push({ name: 'tool', id: guide.id })}>
+              <ToolTile guide={guide} />
+              {guide.name}
+            </Pill>
+          ))}
+        </div>
+      </section>
+
       {state && (connectionCount > 0 || state.providers.length > 0) && (
-        <Collapsible className="group border-t border-border pt-2">
+        <Collapsible defaultOpen className="group border-t border-border pt-2">
           <CollapsibleTrigger className="flex min-h-12 w-full items-center gap-2 rounded-lg text-left text-[13px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring/70">
             <span className="flex-1">Connections</span>
             <span className="text-muted-foreground">{connectionCount}</span>

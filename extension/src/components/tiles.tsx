@@ -4,6 +4,7 @@ import { IconTile } from '@/components/ios/IconTile';
 import type { Agent } from '@/lib/api';
 import { CLIENTS, type ClientGuide, type ClientKind } from '@/lib/clients';
 import { GROUP_COLORS } from '@/lib/format';
+import { cn } from '@/lib/utils';
 
 const CLIENT_ICONS: Partial<Record<string, { src: string; background: string; className?: string }>> = {
   claude: { src: '/icons/clients/claude.svg', background: '#f2e7df', className: 'p-[5px]' },
@@ -11,6 +12,8 @@ const CLIENT_ICONS: Partial<Record<string, { src: string; background: string; cl
   chatgpt: { src: '/icons/clients/chatgpt.svg', background: '#fff' },
   cursor: { src: '/icons/clients/cursor.png', background: '#18181b', className: 'p-1' },
   codex: { src: '/icons/clients/codex.png', background: '#fff' },
+  hermes: { src: '/icons/clients/hermes.jpg', background: '#fff' },
+  openclaw: { src: '/icons/clients/openclaw.png', background: '#06090e', className: 'object-cover object-left' },
   'gemini-cli': { src: '/icons/clients/gemini.png', background: '#fff', className: 'p-1' },
   windsurf: { src: '/icons/clients/windsurf.svg', background: '#111827' },
   'copilot-cli': { src: '/icons/clients/copilot.svg', background: '#fff', className: 'p-[5px]' },
@@ -41,7 +44,7 @@ function ClientTile({ guide, size }: { guide: ClientGuide; size: 'sm' | 'lg' }) 
       {icon ? (
         <img
           alt=""
-          className={`size-full rounded-[inherit] object-contain ${icon.className ?? ''}`}
+          className={cn('size-full rounded-[inherit] object-contain', icon.className)}
           src={icon.src}
         />
       ) : (

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Tabpass",
   "short_name": "Tabpass",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Connect compatible AI apps to your open tabs. Share page content and allow browser actions on sites you approve.",
   "minimum_chrome_version": "116",
   "icons": {
