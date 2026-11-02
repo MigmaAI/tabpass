@@ -30,6 +30,10 @@ jobs:
       - name: Relay (install, test, typecheck)
         run: yarn --cwd relay install --frozen-lockfile && yarn --cwd relay test && yarn --cwd relay typecheck
 
+      # Worker tests run separately because they start the real workerd runtime.
+      - name: Cloudflare Worker relay
+        run: yarn --cwd relay test:worker
+
       - name: Extension (install, store build)
         run: yarn --cwd extension install --frozen-lockfile && yarn --cwd extension build
 
