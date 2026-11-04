@@ -86,7 +86,7 @@ function BrowserScreen({ state, onChange }: { state: TabpassState; onChange: () 
           <ListRow
             title={
               <span className="text-[13px] leading-[18px] whitespace-normal text-muted-foreground">
-                Page text, screenshots and highlighted text go only to AI tools you connected, only on sites you allow, through the relay
+                Page content, screenshots and highlighted text go only to AI tools you connected, only on sites you allow, through the relay
                 above. Tab titles and links go to them so they can find a tab. Nothing is sold or used for ads.
               </span>
             }
