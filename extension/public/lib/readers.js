@@ -4,6 +4,8 @@
 
 import { callPage } from './page.js';
 
+const PDF_READER_FILE = 'content/pdf-reader.js';
+
 function googleExports(url, format) {
   let parsed;
   try {
@@ -63,4 +65,12 @@ export async function readWithSiteReader(tabId, url, format) {
     }
   }
   return null;
+}
+
+/** The text of the PDF in a tab. pdf.js is large, so it goes into a tab only when a PDF is read there. */
+export async function readPdf(tabId, args) {
+  const loaded = await callPage(tabId, 'readPdf', args);
+  if (loaded) return loaded;
+  await chrome.scripting.executeScript({ target: { tabId }, files: [PDF_READER_FILE] });
+  return callPage(tabId, 'readPdf', args);
 }

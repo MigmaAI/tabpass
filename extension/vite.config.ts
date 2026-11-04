@@ -3,7 +3,44 @@ import { resolve } from 'node:path';
 
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
-import { defineConfig, type Plugin } from 'vite';
+import { build, defineConfig, type Plugin } from 'vite';
+
+/**
+ * pdf.js as one classic script, because chrome.scripting cannot inject a module. tools.js injects it
+ * into a tab only when an agent reads a PDF there. `public/` is copied as it is, so it is built here.
+ */
+async function buildPdfReader(outDir: string) {
+  await build({
+    configFile: false,
+    logLevel: 'warn',
+    // Only pdf.js's Node.js branch reads this, and that branch never runs in a browser.
+    define: { 'import.meta.url': '""' },
+    plugins: [
+      {
+        // core-js's last resort for finding the global object. Chrome always has globalThis, and
+        // the store answers promise that the package never turns a string into code.
+        name: 'tabpass-no-function-constructor',
+        transform: (code) => code.replaceAll(/\bFunction\((['"])return this\1\)\(\)/g, 'undefined'),
+      },
+    ],
+    build: {
+      outDir,
+      emptyOutDir: false,
+      target: 'chrome116',
+      lib: {
+        entry: resolve(import.meta.dirname, 'src/pdf-reader.js'),
+        name: 'tabpassPdfReader',
+        formats: ['iife'],
+        fileName: () => 'content/pdf-reader.js',
+      },
+    },
+  });
+  const [notice, apache] = await Promise.all([
+    readFile(resolve(import.meta.dirname, 'src/pdf-reader.NOTICE.txt'), 'utf8'),
+    readFile(resolve(import.meta.dirname, 'node_modules/pdfjs-dist/LICENSE'), 'utf8'),
+  ]);
+  await writeFile(resolve(outDir, 'content/pdf-reader.LICENSE.txt'), notice + apache);
+}
 
 /**
  * `vite build --mode development` makes a test build: it uses a local relay
@@ -20,6 +57,7 @@ function buildConfig(mode: string): Plugin {
     apply: 'build',
     async writeBundle(options) {
       if (!options.dir) return;
+      await buildPdfReader(options.dir);
       await writeFile(
         resolve(options.dir, 'lib/build-config.js'),
         [

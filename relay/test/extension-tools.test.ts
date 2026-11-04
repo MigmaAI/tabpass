@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   addActivity: vi.fn(async () => undefined),
   callPage: vi.fn(),
   ensureSiteAccess: vi.fn(async () => undefined),
+  readPdf: vi.fn(),
   readWithSiteReader: vi.fn(async () => null),
   touchAgent: vi.fn(async () => undefined),
 }));
@@ -15,7 +16,7 @@ vi.mock('../../extension/public/lib/permissions.js', () => ({
   isRestrictedUrl: vi.fn(() => false),
   ToolError: class ToolError extends Error {},
 }));
-vi.mock('../../extension/public/lib/readers.js', () => ({ readWithSiteReader: mocks.readWithSiteReader }));
+vi.mock('../../extension/public/lib/readers.js', () => ({ readPdf: mocks.readPdf, readWithSiteReader: mocks.readWithSiteReader }));
 vi.mock('../../extension/public/lib/store.js', () => ({
   addActivity: mocks.addActivity,
   getSession: vi.fn(async (_key: string, fallback: unknown) => fallback),
@@ -190,10 +191,42 @@ describe('extension read_page visual evidence', () => {
     const framed = await runTool(agent, 'read_page', { tabId: 7 });
     expect(framed.content[0].text).toContain('https://other.test/embed');
 
-    mocks.callPage.mockResolvedValue({ ...body, text: '', note: 'This tab shows application/pdf.' });
+    mocks.callPage.mockResolvedValue({ ...body, text: '', note: 'This tab shows image/png.' });
     const note = await runTool(agent, 'read_page', { tabId: 7 });
-    expect(note.content[0].text).toContain('This tab shows application/pdf.');
+    expect(note.content[0].text).toContain('This tab shows image/png.');
     expect(note.content[0].text).not.toContain('(no readable text)');
+  });
+
+  it('reads a PDF through its reader, after the site check, with the same offset and limit', async () => {
+    installChrome([{ id: 7, windowId: 1, active: true, title: 'report.pdf', url: 'https://example.com/report.pdf' }]);
+    const shell = { title: '', url: 'https://example.com/report.pdf', format: 'raw', contentType: 'application/pdf', text: '', truncated: false };
+    mocks.callPage.mockResolvedValue(shell);
+    mocks.ensureSiteAccess.mockClear();
+    mocks.readPdf.mockClear();
+    mocks.readPdf.mockResolvedValue({ format: 'pdf', text: '--- Page 2 ---\nwords', truncated: true, nextOffset: 1500, pages: 9 });
+
+    const part = await runTool(agent, 'read_page', { tabId: 7, offset: 500, maxChars: 1000 });
+    expect(mocks.ensureSiteAccess.mock.invocationCallOrder[0]!).toBeLessThan(mocks.readPdf.mock.invocationCallOrder[0]!);
+    expect(mocks.readPdf).toHaveBeenCalledWith(7, { url: shell.url, offset: 500, maxChars: 1000 });
+    const output = part.content[0].text;
+    expect(output).toContain('Title: report.pdf');
+    expect(output).toContain('Pages: 9');
+    expect(output).toContain('Part: from character 500');
+    expect(output).toContain('--- Page 2 ---\nwords');
+    expect(output).toContain('call read_page with offset=1500');
+    expect(output).not.toContain('Format:');
+
+    mocks.readPdf.mockResolvedValue({ format: 'pdf', text: 'some words', truncated: false, pages: 1, note: 'Some text is missing.' });
+    expect((await runTool(agent, 'read_page', { tabId: 7 })).content[0].text).toContain('some words\n\n[Some text is missing.]');
+
+    mocks.readPdf.mockResolvedValue({ format: 'pdf', text: '', truncated: false, note: 'This PDF needs a password.' });
+    const locked = (await runTool(agent, 'read_page', { tabId: 7 })).content[0].text;
+    expect(locked).toContain('This PDF needs a password.');
+    expect(locked).not.toContain('no readable text');
+
+    mocks.readPdf.mockResolvedValue({ format: 'pdf', text: 'words', truncated: false, pages: 3 });
+    const evidence = JSON.parse((await runTool(agent, 'read_page', { tabId: 7, includeHtml: true })).content[0].text);
+    expect(evidence).toMatchObject({ format: 'pdf', pages: 3, contentType: 'application/pdf', text: 'words' });
   });
 
   it('asks the site reader for the requested format and pages through its text', async () => {

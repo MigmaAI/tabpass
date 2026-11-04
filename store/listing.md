@@ -75,7 +75,7 @@ PRIVACY
 
 GOOD TO KNOW
 - Clicks and typing are page events, not real input, so a few sites ignore them, and pop-up windows may not open.
-- Tabpass reads the main page only, not frames inside it. PDFs in Chrome's viewer are not supported yet.
+- Tabpass reads the main page only, not frames inside it. It reads the text of PDFs on websites, but not scanned PDFs or PDF files on your computer.
 - Chrome does not let any extension read chrome:// pages or the Chrome Web Store.
 
 Tabpass is open source (MIT): https://github.com/migmaai/tabpass
