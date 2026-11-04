@@ -22,7 +22,7 @@ Connect compatible AI apps to your open tabs. Share page content and allow brows
 
 ## Description
 
-For extension 0.3.5. Plain text. The store does not render Markdown, so paste it as is.
+For extension 0.4.0. Plain text. The store does not render Markdown, so paste it as is.
 
 ```
 Your AI can work with the pages you already have open, signed in as you. Use it to research, read references or work through browser tasks. You approve each new site first.

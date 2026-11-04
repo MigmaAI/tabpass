@@ -1,6 +1,6 @@
 # Tabpass Privacy Policy
 
-**Effective date:** 16 October 2026
+**Effective date:** 4 November 2026
 
 Tabpass is an open-source Chrome extension and relay, made by Migma ("we", "us"). It lets AI agents you connect read and use your open tabs. This policy covers the Tabpass extension and the Tabpass relay that Migma runs at `tabs.migma.ai`.
 
