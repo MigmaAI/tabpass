@@ -4,7 +4,7 @@ Tabpass gives every AI tool **one link**: your relay's MCP address, for example 
 
 This works because the relay follows the MCP authorization spec: an unauthenticated request gets `401` with `WWW-Authenticate: Bearer resource_metadata="…"`, the tool reads the protected resource metadata and the authorization server metadata, registers itself (Dynamic Client Registration), and signs in with PKCE. Most tools listed below do this on their own.
 
-Tools that cannot sign in use a **token agent** instead: in the side panel, open **Connect an AI tool → Make a link with a key** and copy its token link or header (see [Tools without OAuth](#tools-without-oauth)).
+Tools that cannot sign in use a **token agent** instead: in the side panel, open **Choose an app → Make a link with a key** and copy its token link or header (see [Tools without OAuth](#tools-without-oauth)).
 
 Two things to know first:
 
@@ -14,6 +14,14 @@ Two things to know first:
 The extension builds the same guides from `extension/src/lib/clients.ts`.
 
 ---
+
+## Migma
+
+Migma's new **Connect browser** action uses the public Tabpass Web Protocol SDK. Click it while signed in, choose Read or Read and act in Tabpass's own window, and wait while Migma's authenticated backend verifies the MCP credential. Migma shows Connected only after that server check succeeds. No server URL or key needs to be copied.
+
+This is a **personal connection**, separate from brand MCP connectors and from Tabpass's development-only provider account mode. It is available only to the signed-in person who connected it and only in live design turns that carry that person's identity. The implementation is local and still requires the matching Migma frontend and backend release before it is available in production.
+
+Existing brand-level custom MCP setup remains a separate option: public URL `https://tabs.migma.ai/mcp`, **HTTP (Streamable)**, **OAuth2**, **Always Ask**. That connector follows the brand's existing access and permission rules; it is not the personal Connect browser flow.
 
 ## Claude (web, desktop and phone)
 
@@ -269,7 +277,7 @@ Junie reads the same JSON from `~/.junie/mcp/mcp.json`.
 
 ## Tools without OAuth
 
-Make a **token agent** in the side panel (**Connect an AI tool → Make a link with a key**). Its token looks like `tp_<16 chars>.<43 chars>`. Keep it private: it opens your browser. Use it one of three ways.
+Make a **token agent** in the side panel (**Choose an app → Make a link with a key**). Its token looks like `tp_<16 chars>.<43 chars>`. Keep it private: it opens your browser. Use it one of three ways.
 
 **1. Header.** Send `Authorization: Bearer tp_…` with the universal URL:
 

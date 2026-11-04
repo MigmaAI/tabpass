@@ -18,31 +18,36 @@ It follows the structure of OpenAI's ChatGPT Chrome extension: a side panel, per
                      extension/   Chrome MV3: side panel, site approval, 15 tools
 ```
 
-## Connect any AI tool
+## Paste a prompt. Use your browser.
 
-Every tool uses **one link**: `https://tabs.migma.ai/mcp`.
+1. Open Tabpass and choose **Create connection prompt**.
+2. Name the connection and choose **Read** or **Read and act**. Read is the default.
+3. Choose **Copy connection prompt** and paste it into an AI that can call MCP servers or make HTTP requests.
+4. Ask it to help with your open tabs. Tabpass asks before it reads or uses each new website.
 
-1. Add the link to your tool as a remote MCP server. In the side panel, **Connect an AI tool** has an **Add** button for Claude, Cursor and VS Code, and short steps for 16 others.
-2. The tool asks you to sign in. Tabpass opens its own window: pick **Read** or **Read and act**, then **Connect**.
-3. The first time the tool wants a site, Tabpass asks: **Always allow**, **Allow for 10 minutes**, **Don't allow** or **Block this site**.
+No separate Tabpass account or sign-in is needed. Your AI uses pages in the browser where Tabpass is installed, including websites you are already signed into.
 
-The relay is an MCP OAuth 2.1 server, so tools register and sign in by themselves (Dynamic Client Registration or Client ID Metadata Documents, PKCE). No token to copy.
+The prompt contains a private access link. Anyone with it can use the access you chose. Keep it out of public chats and shared documents. Remove the connection in Tabpass to revoke it.
 
-For tools that cannot sign in, **Make a link with a key** gives a link with its own token, as a URL, a header or a config snippet.
+Some AI apps need a connector configured before they can use browser tools. **App setup options** keeps those guides and the OAuth server URL, `https://tabs.migma.ai/mcp`. A participating website can also offer its own Connect button.
 
-Step-by-step guides for 19 tools: [docs/clients.md](docs/clients.md). Agents that read docs can start at `https://tabs.migma.ai/llms.txt`.
+The prompt-first extension UI is a local update awaiting release. Existing versions expose the same private links through **Make a link with a key**.
+
+Step-by-step guides: [docs/clients.md](docs/clients.md). Agents that read docs can start at `https://tabs.migma.ai/llms.txt`.
 
 ## Ways to connect
 
 | | How | Who it acts as |
 |---|---|---|
-| **One URL** (OAuth) | Add `https://tabs.migma.ai/mcp`, approve in Tabpass's window | The tool's name, with the access you picked |
-| **Link with a key** | **Make a link with a key** in the side panel | The name you typed |
-| **Website** | The site's "Connect your browser" button, then confirm in Tabpass | The site's name; it gets a token for its AI ([web protocol](docs/web-protocol.md)) |
+| **App setup** (OAuth) | Add `https://tabs.migma.ai/mcp`, approve in Tabpass's window | The tool's name, with the access you picked |
+| **Private connection prompt** | Create a connection, then paste its prompt into a capable AI | The name you typed |
+| **Website** | The site's "Connect your browser" button, then confirm in Tabpass | The site's name; its authenticated backend gets a token for its MCP client ([Web Protocol](docs/web-protocol.md), [`@migma/tabpass-connect` browser SDK](connect/README.md)) |
 
-Migma account connections are available in development builds only until Migma's integration ships. The store build does not show a Migma Connect row.
+Migma's new **Connect browser** flow uses the public Web Protocol SDK. It belongs to the signed-in person, not a brand: the page hands the approved credential to Migma's authenticated backend, which verifies the MCP connection before saving it. Only that person can offer the browser tools in a live Migma design turn. The implementation is local and still requires the Migma frontend and backend release before it is available in production.
 
-Account mode is built for teams: a browser binds to one **person**, never to an org, so teammates, admins and org-wide keys can never reach someone else's browser. See [docs/migma-integration.md](docs/migma-integration.md) for Migma's side and every edge case, and [docs/accounts.md](docs/accounts.md) to add another provider.
+The separate Migma **account connection** remains available in development builds only; the store build does not show its account Connect row.
+
+The personal SDK flow also binds a browser to one **person**, never to an org. Teammates and admins do not inherit it through a shared brand. See [docs/migma-integration.md](docs/migma-integration.md) for Migma's local implementation, and [docs/accounts.md](docs/accounts.md) for the separate provider-account prototype.
 
 ## Tools
 
@@ -69,6 +74,7 @@ relay/        TypeScript relay. src/core runs on Web APIs only, shared by both h
 extension/    public/  service worker, tools, page agent, web protocol bridge, manifest (plain JS)
               src/     side panel and prompt windows: React 19, Tailwind v4, shadcn/ui
 e2e/          real Chromium end to end, and the store image generator
+connect/      zero-dependency TypeScript browser SDK for the web protocol
 store/        Chrome Web Store listing, privacy answers and images
 docs/         clients, web protocol, accounts, Migma integration, publishing
 ```
@@ -84,7 +90,7 @@ yarn --cwd extension build:dev                      # extension/dist, set to the
 ```
 
 1. Open `chrome://extensions`, turn on Developer mode, **Load unpacked**, and pick `extension/dist`.
-2. Click the toolbar icon. The panel connects to `ws://localhost:8787/extension` (change it under **This browser**).
+2. Click the toolbar icon. The panel connects to `ws://localhost:8787/extension` (change it under **Settings**).
 3. Connect a tool on this computer with `http://localhost:8787/mcp`, for example `claude mcp add --transport http tabpass http://localhost:8787/mcp`. Cloud tools (Claude.ai, ChatGPT) connect from their own servers, so they need a relay with a public HTTPS address.
 
 `yarn --cwd extension watch` rebuilds on change. `yarn --cwd extension build` makes the store build, which uses `wss://tabs.migma.ai/extension`.
@@ -117,7 +123,7 @@ docker run -p 8787:8787 -e PUBLIC_URL=https://tabs.example.com -e RELAY_SECRET=â
 | `PUBLIC_URL` | `http://localhost:$PORT` | The address tools use. Sign-in redirects and links are built from it. |
 | `RELAY_SECRET` | random, with a warning | Signs OAuth clients and codes. Without a stable value, every restart signs every tool out. |
 | `PORT`, `HOST` | `8787`, `127.0.0.1` (`0.0.0.0` in Docker) | |
-| `INSTALL_URL` | the GitHub page | Where the sign-in page sends people without Tabpass. |
+| `INSTALL_URL` | the Chrome Web Store listing | Where the sign-in page sends people without Tabpass. |
 | `RATE_LIMIT_PER_MINUTE` | `300` | MCP requests per tool per minute. |
 | `ACCOUNTS_VERIFY_URL`, `ACCOUNTS_VERIFY_SECRET` | off | Account mode: where the relay checks browser connections. |
 | `INTERNAL_SECRET` | off | Turns on `/internal` for the account provider's servers. |
@@ -131,7 +137,7 @@ Put it behind TLS with WebSocket upgrades on `/extension`. The Node relay keeps 
 - **Per-site approval.** Listing tab titles needs no prompt; reading or acting on a site does. **Always allow** applies to every tool you connect; **Allow for 10 minutes** to that tool only. Blocked sites are hidden from `list_tabs`.
 - **Read means read.** Tools with Read access do not even see the act tools. A switch in the header pauses every tool.
 - **Not detectable by websites.** The web protocol answers a site only after a click on its page, or if you connected it before.
-- **Revoking is instant.** A disconnected tool's next request gets 401, and a revoked Migma connection is cut off at once (or within 10 minutes through re-verify).
+- **Revoking is immediate for direct tools.** A disconnected tool's next request gets 401. Migma's personal flow separately removes its encrypted server-side credential and the site can remove its Tabpass grant with the Web Protocol.
 - **Outages never disconnect people.** A provider outage or a wrong relay secret counts as "unavailable", never as "revoked".
 - **Visible.** While a tool acts, a blue frame and a "Claude is using this tab" label show on the page, and the activity list records every call, including failures.
 - **Isolated.** The page agent runs in the extension's isolated world; pages cannot see or call it, and element refs are never written into the DOM.

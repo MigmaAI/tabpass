@@ -4,11 +4,18 @@ import { useEffect, useState } from 'react';
 export function useActiveTabUrl(): string | null {
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
+    let currentRead = 0;
+    let mounted = true;
     const read = (): void => {
+      const readId = ++currentRead;
       chrome.tabs
         .query({ active: true, currentWindow: true })
-        .then(([tab]) => setUrl(tab?.url ?? null))
-        .catch(() => setUrl(null));
+        .then(([tab]) => {
+          if (mounted && readId === currentRead) setUrl(tab?.url ?? null);
+        })
+        .catch(() => {
+          if (mounted && readId === currentRead) setUrl(null);
+        });
     };
     read();
     const onUpdated = (_id: number, info: chrome.tabs.OnUpdatedInfo): void => {
@@ -16,9 +23,13 @@ export function useActiveTabUrl(): string | null {
     };
     chrome.tabs.onActivated.addListener(read);
     chrome.tabs.onUpdated.addListener(onUpdated);
+    chrome.windows.onFocusChanged.addListener(read);
     return () => {
+      mounted = false;
+      currentRead += 1;
       chrome.tabs.onActivated.removeListener(read);
       chrome.tabs.onUpdated.removeListener(onUpdated);
+      chrome.windows.onFocusChanged.removeListener(read);
     };
   }, []);
   return url;

@@ -11,9 +11,12 @@ function WelcomeCard({ onChange }: { onChange: () => void }) {
   return (
     <div className="grid gap-3 px-1 py-2" role="note">
       <div className="relative grid gap-2">
-        <p className="flex items-center gap-2 text-[18px] font-semibold tracking-[-0.025em]"><ShieldCheckIcon className="size-[18px] text-tint" strokeWidth={1.8} />Your tabs. Your say.</p>
+        <p className="flex items-start gap-2 text-[18px] leading-6 font-semibold tracking-[-0.025em]"><ShieldCheckIcon className="mt-0.5 size-[18px] shrink-0 text-tint" strokeWidth={1.8} />Give your AI access to your browser</p>
         <p className="text-[13px] leading-[18px] text-muted-foreground">
-          Tabpass shares a page only with AI tools you connect, and only on sites you allow. Tab titles and links are shared with them so they can find the right tab.
+          Ask it to read pages, compare tabs, or use what’s open.
+        </p>
+        <p className="text-[12px] leading-[17px] text-muted-foreground">
+          Connected AI can see your tab titles and links. You approve each website before it can read pages or click and type.
         </p>
       </div>
       <Pill size="sm" variant="secondary" className="w-fit" onClick={() => send('dismissWelcome').then(onChange)}>

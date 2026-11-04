@@ -15,7 +15,7 @@ routes = [{ pattern = "tabs.migma.ai", custom_domain = true }]
 
 [vars]
 PUBLIC_URL = "https://tabs.migma.ai"
-INSTALL_URL = "https://github.com/migmaai/tabpass#install"
+INSTALL_URL = "https://chromewebstore.google.com/detail/tabpass/dfkcbinlgcemppeealhaicfdljcfnfdp"
 # ACCOUNTS_VERIFY_URL = "https://api.migma.ai/internal/tabpass/verify"
 
 [[durable_objects.bindings]]

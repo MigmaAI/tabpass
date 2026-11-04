@@ -4,6 +4,7 @@
 //   /mcp, /mcp/<token>   MCP for agents (Bearer token, OAuth access token, or token in the path)
 //   OAuth                 /.well-known/*, /register, /authorize, /authorize/complete, /token
 //   /internal/*           an account provider's servers acting for a person (shared secret)
+//   /browser-status        authenticated browser identity and socket availability
 //   /, /llms.txt, /health
 
 import { runAccountTool } from './account-tools.js';
@@ -38,7 +39,7 @@ export interface RelayApp {
 
 const MAX_BODY_BYTES = 1_000_000;
 const DEFAULT_RATE_LIMIT = 300;
-const DEFAULT_INSTALL_URL = 'https://github.com/migmaai/tabpass#install';
+const DEFAULT_INSTALL_URL = 'https://chromewebstore.google.com/detail/tabpass/dfkcbinlgcemppeealhaicfdljcfnfdp';
 const ACCOUNT_TOOLS = new Map(accountTools().map((tool) => [tool.name, tool]));
 
 const CORS_HEADERS: Record<string, string> = {
@@ -150,6 +151,19 @@ export function createRelayApp(options: RelayAppOptions): RelayApp {
     return withCors(await serveMcp(request, createTokenMcpServer(directory, token, access), body));
   }
 
+  /** No tab access. Identity is returned only after the live browser verifies the agent token. */
+  async function handleBrowserStatus(request: Request): Promise<Response> {
+    const headers = { 'Cache-Control': 'no-store' };
+    if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405, { ...headers, Allow: 'GET, OPTIONS' });
+    const token = await extractToken(request, '/browser-status');
+    if (!token) return json({ error: 'Unauthorized' }, 401, headers);
+    if (!limiter.allow(token.tokenHash)) return json({ error: 'Too many requests' }, 429, { ...headers, 'Retry-After': '60' });
+    const lookup = await directory.lookupAgent(token);
+    if (lookup.status === 'invalid') return json({ status: 'revoked' }, 200, headers);
+    if (lookup.status === 'offline') return json({ status: 'offline' }, 200, headers);
+    return json({ status: 'online', browser: lookup.browser ?? null }, 200, headers);
+  }
+
   /** Provider-to-relay API. Not for agents: it acts for any person the provider names. */
   async function handleInternal(request: Request, pathname: string): Promise<Response> {
     const header = request.headers.get('authorization') ?? '';
@@ -185,6 +199,7 @@ export function createRelayApp(options: RelayAppOptions): RelayApp {
     const pathname = url.pathname.replace(/\/+$/, '') || '/';
 
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS_HEADERS });
+    if (pathname === '/browser-status') return handleBrowserStatus(request);
     if (pathname === '/health') return json({ ok: true, ...(await directory.stats()) });
     if (pathname === '/mcp' || pathname.startsWith('/mcp/')) return handleMcp(request, pathname);
     if (pathname.startsWith('/internal/')) return handleInternal(request, pathname);

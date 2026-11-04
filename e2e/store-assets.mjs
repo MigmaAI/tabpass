@@ -106,7 +106,7 @@ async function shootPanel(panel, name) {
 
 /** "Make a link with a key" in the panel, as a person would for a tool without sign-in. */
 async function keyLink(panel, name, control) {
-  await panel.getByRole('button', { name: 'Connect an AI tool', exact: true }).click();
+  await panel.getByRole('button', { name: 'Choose an app', exact: true }).click();
   await panel.getByRole('button', { name: 'Make a link with a key', exact: true }).click();
   await panel.getByRole('button', { name, exact: true }).click();
   if (control) await panel.getByRole('radio', { name: 'Read and act' }).click();
@@ -177,7 +177,7 @@ try {
   await panel.addStyleTag({ content: '*::-webkit-scrollbar { display: none; }' });
   await panel.getByRole('button', { name: 'Got it' }).click();
   await panel.evaluate(() => chrome.runtime.sendMessage({ type: 'setBrowserName', browserName: 'Work laptop' }));
-  await panel.getByRole('status').getByText('Connected · Work laptop').waitFor({ timeout: 15000 });
+  await panel.getByRole('status').getByText('Browser online').waitFor({ timeout: 15000 });
   assert.equal(await panel.getByRole('region', { name: 'Migma', exact: true }).count(), 0, 'Store builds must not offer the unfinished Migma connection');
 
   // Two tools connect with a link; each panel shot shows the moment its prompt belongs to.
@@ -210,9 +210,15 @@ try {
   await panel.bringToFront();
   await panel.getByText('ChatGPT · read page').waitFor();
   await shootPanel(panel, 'home.png');
-  await panel.getByRole('button', { name: 'Connect an AI tool', exact: true }).click();
-  await panel.locator('code', { hasText: `https://${RELAY_HOST}/mcp` }).first().waitFor();
+  await panel.getByRole('button', { name: 'Choose an app', exact: true }).click();
+  const serverUrl = panel.locator('code', { hasText: `https://${RELAY_HOST}/mcp` }).first();
+  assert.equal(await serverUrl.isVisible(), false, 'The raw server URL starts hidden under Manual setup');
   await shootPanel(panel, 'connect.png');
+  await panel.getByText('Manual setup', { exact: true }).click();
+  await panel.getByText('Server URL', { exact: true }).waitFor();
+  await serverUrl.waitFor();
+  await panel.getByText('Manual setup', { exact: true }).click();
+  assert.equal(await serverUrl.isVisible(), false, 'Closing Manual setup hides the raw server URL again');
   await panel.locator('header button').first().click();
   await panel.emulateMedia({ colorScheme: 'dark' });
   await shootPanel(panel, 'home-dark.png');

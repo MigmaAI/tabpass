@@ -3,8 +3,9 @@ export type Access = 'read' | 'control';
 export interface RequestOptions { signal?: AbortSignal; timeoutMs?: number }
 export interface ConnectParams { name: string; access: Access }
 export interface Connection { token: string; mcpUrl: string; connectorUrl: string; access: Access; name: string }
-export interface Hello { name: 'Tabpass'; version: string; protocol: 1; connected: boolean }
-export interface Status { connected: boolean; access: Access | null; name: string | null }
+export interface BrowserIdentity { browserId?: string; browserName?: string }
+export interface Hello extends BrowserIdentity { name: 'Tabpass'; version: string; protocol: 1; connected: boolean }
+export interface Status extends BrowserIdentity { connected: boolean; access: Access | null; name: string | null }
 
 const messages: Record<string, string> = {
   timeout: 'Tabpass did not answer in time.',
@@ -34,6 +35,11 @@ const record = (value: unknown): value is Record<string, unknown> =>
 const access = (value: unknown): value is Access => value === 'read' || value === 'control';
 const name = (value: unknown): value is string => typeof value === 'string' && /^[^\u0000-\u001f\u007f]{1,255}$/.test(value);
 const token = (value: unknown): value is string => typeof value === 'string' && /^tp_[A-Za-z0-9_-]{16}\.[A-Za-z0-9_-]{43}$/.test(value);
+
+function validIdentity(value: Record<string, unknown>): boolean {
+  return (value.browserId === undefined || typeof value.browserId === 'string' && /^[A-Za-z0-9_-]{16}$/.test(value.browserId)) &&
+    (value.browserName === undefined || name(value.browserName));
+}
 
 function validEndpoint(value: unknown): value is string {
   if (typeof value !== 'string') return false;
@@ -105,12 +111,12 @@ export function connect(params: ConnectParams, options: RequestOptions = {}): Pr
 export function hello(options: RequestOptions = {}): Promise<Hello> {
   return request('hello', {}, 1500, options, (v): v is Hello => record(v) && v.name === 'Tabpass' &&
     typeof v.version === 'string' && v.version.length > 0 && v.version.length <= 100 &&
-    v.protocol === 1 && typeof v.connected === 'boolean');
+    v.protocol === 1 && typeof v.connected === 'boolean' && validIdentity(v));
 }
 
 /** Reports a saved grant, not live relay availability. */
 export function status(options: RequestOptions = {}): Promise<Status> {
-  return request('status', {}, 1500, options, (v): v is Status => record(v) &&
+  return request('status', {}, 1500, options, (v): v is Status => record(v) && validIdentity(v) &&
     (v.connected === true && access(v.access) && name(v.name) ||
       v.connected === false && v.access === null && v.name === null));
 }

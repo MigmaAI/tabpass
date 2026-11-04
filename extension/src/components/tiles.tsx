@@ -23,6 +23,7 @@ const CLIENT_ICONS: Partial<Record<string, { src: string; background: string; cl
   warp: { src: '/icons/clients/warp.svg', background: '#e7eef6', className: 'p-[6px]' },
   perplexity: { src: '/icons/clients/perplexity.svg', background: '#efedeb', className: 'p-[6px]' },
   'le-chat': { src: '/icons/clients/mistral.svg', background: '#fff3dc', className: 'p-[5px]' },
+  migma: { src: '/icons/clients/migma.svg', background: '#1a1a1a' },
   jetbrains: { src: '/icons/clients/jetbrains.svg', background: '#eee9f4', className: 'p-[6px]' },
 };
 
@@ -54,7 +55,9 @@ function ClientTile({ guide, size }: { guide: ClientGuide; size: 'sm' | 'lg' }) 
 /** The catalog entry an agent was named after ("Claude Code" → Claude Code's tile), if any. */
 export function guideForName(name: string): ClientGuide | undefined {
   const wanted = name.trim().toLowerCase();
-  return CLIENTS.find((client) => client.name.toLowerCase() === wanted);
+  return CLIENTS.find(
+    (client) => client.name.toLowerCase() === wanted || client.aliases?.some((alias) => alias.toLowerCase() === wanted),
+  );
 }
 
 export function AgentTile({ agent, size = 'sm' }: { agent: Agent; size?: 'sm' | 'lg' }) {

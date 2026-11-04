@@ -32,8 +32,7 @@ function ToolScreen({ state, id, onChange }: { state: TabpassState; id: string; 
         {unreachable && (
           <div className="flex gap-3 rounded-xl bg-card p-4 text-[13px] leading-[18px]" role="alert">
             <TriangleAlertIcon className="size-5 shrink-0 text-warning" aria-hidden />
-            {guide.name} connects from the internet, so it cannot reach a relay on this computer. Use a public relay under This
-            browser.
+            {guide.name} cannot connect to a server running on your computer. Choose a public connection server in Settings.
           </div>
         )}
 

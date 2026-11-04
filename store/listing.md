@@ -14,28 +14,30 @@ Comes from `name` in `extension/public/manifest.json` (the dashboard reads it fr
 
 ## Summary (132 characters max)
 
-The dashboard takes the summary from `description` in `extension/public/manifest.json`, which already holds this text (111 characters). Change it there, not in the dashboard.
+The dashboard takes the summary from `description` in `extension/public/manifest.json`, which holds this text (112 characters). Change it there, not in the dashboard.
 
 ```
-Let Claude, ChatGPT, Cursor or any AI tool read and use your open tabs. You approve each new site. Open source.
+Connect compatible AI apps to your open tabs. Share page content and allow browser actions on sites you approve.
 ```
 
 ## Description
 
-Plain text. The store does not render Markdown, so paste it as is.
+Draft for the prompt-first extension update; do not publish before that UI ships. Plain text. The store does not render Markdown, so paste it as is.
 
 ```
 Your AI can work with the pages you already have open, signed in as you, instead of you copying and pasting. You approve each new site first.
 
-Tabpass connects your open Chrome tabs to AI agents through MCP (Model Context Protocol). It works with Claude, ChatGPT, Cursor, Claude Code, Codex and any other tool that can add an MCP server.
+Tabpass connects your open Chrome tabs to AI agents through MCP (Model Context Protocol). Connect an app that supports remote MCP servers and follow its setup instructions.
 
 HOW IT WORKS
-1. Open the Tabpass side panel and click "Connect an AI tool".
-2. Add the one Tabpass link to your AI tool. Claude, Cursor and VS Code have an "Add" button; the others take a few steps, shown in the panel.
-3. Your tool asks you to sign in. Tabpass opens its own window: choose "Read" or "Read and act", then "Connect".
-4. The first time the tool wants a site, Tabpass asks you: "Always allow", "Allow for 10 minutes", "Don't allow" or "Block this site".
+1. Open Tabpass and choose "Create connection prompt".
+2. Choose "Read" or "Read and act", then create your connection.
+3. Copy the private prompt and paste it into an AI that can use MCP servers or make HTTP requests.
+4. Ask it to help with your open tabs. Tabpass asks before the AI reads or uses each new website.
 
-Tools without sign-in get their own link with a key instead.
+No separate Tabpass account or sign-in is needed. The private link grants the access you selected, so keep it out of public chats and shared documents. Disconnect it in Tabpass to revoke access.
+
+Some AI apps need setup in their connector settings first. "App setup options" has those instructions.
 
 Some AI websites can connect from their own page, in one click. Tabpass still asks you first, in its own window.
 
@@ -57,9 +59,8 @@ YOU STAY IN CONTROL
 - A "Read" tool cannot click or type.
 - One switch pauses every tool.
 - While a tool acts on a tab, a blue frame and its name show on the page.
-- The activity list shows every call, including failed ones.
+- Activity shows browser actions and errors.
 - Disconnect a tool and it loses access at once.
-- Websites cannot tell Tabpass is installed until you click their connect button.
 
 PRIVACY
 - Page content leaves your browser only when an AI tool you connected asks for it, on a site you allowed. Blocked sites, never.
@@ -75,7 +76,7 @@ GOOD TO KNOW
 - Chrome does not let any extension read chrome:// pages or the Chrome Web Store.
 
 Tabpass is open source (MIT): https://github.com/migmaai/tabpass
-Made by Migma (https://migma.ai). Tabpass is not made by, or affiliated with, Anthropic, OpenAI or Cursor.
+Made by Migma: https://migma.ai
 ```
 
 Before pasting, check:
@@ -83,7 +84,7 @@ Before pasting, check:
 - **[confirm]** The privacy policy URL is live (see `docs/publishing.md`, "Host the privacy policy") and matches the line above.
 - **[confirm]** `https://github.com/migmaai/tabpass` is the public repository address.
 - If the Google Docs and Sheets readers are still untested against real accounts at submission time (see README, "Known limits"), drop that line rather than promise it.
-- Keep the list of AI tools short and accurate. Store policy treats long keyword lists as spam.
+- Do not add lists of third-party app names to the summary or description. Describe compatibility through MCP support and link to the setup guide when needed. Google rejected the previous app-name list as keyword spam (Yellow Argon).
 
 ## Category
 

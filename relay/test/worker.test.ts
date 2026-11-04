@@ -142,6 +142,20 @@ describe.skipIf(!RUN)('Cloudflare Worker relay (workerd)', () => {
     await client.close();
   });
 
+  it('reports token browser online, revoked and offline without dispatching tools', async () => {
+    const extension = new FakeExtension();
+    const agent = await makeAgent(extension.browserKey, 'Migma', 'read');
+    await browser({ extension, agents: [agent], name: 'Work Chrome' });
+    const check = (token = agent.token) => fetch(`${base}/browser-status`, { headers: { Authorization: `Bearer ${token}` } });
+    expect(await (await check()).json()).toEqual({ status: 'online', browser: { id: await extension.browserId(), name: 'Work Chrome' } });
+    const stranger = await makeAgent(extension.browserKey, 'Other', 'read');
+    expect(await (await check(stranger.token)).json()).toEqual({ status: 'revoked' });
+    expect(extension.calls).toHaveLength(0);
+    await extension.close();
+    await new Promise(resolve => setTimeout(resolve, 200));
+    expect(await (await check()).json()).toEqual({ status: 'offline' });
+  });
+
   it('answers pings without waking the browser object', async () => {
     const extension = await browser();
     const since = extension.messages.length;

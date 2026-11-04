@@ -5,6 +5,7 @@ import { useTabpassState, type TabpassState } from '@/lib/api';
 import { CLIENTS } from '@/lib/clients';
 
 import { NavigationContext, type Navigation, type Route } from './navigation';
+import { Suggestion } from './parts/Suggestion';
 import { ActivityScreen } from './screens/ActivityScreen';
 import { AgentScreen } from './screens/AgentScreen';
 import { BrowserScreen } from './screens/BrowserScreen';
@@ -25,17 +26,17 @@ function titleOf(route: Route, state: TabpassState): string {
     case 'provider':
       return state.providers.find((provider) => provider.id === route.id)?.name ?? 'Back';
     case 'connect':
-      return 'Connect';
+      return 'Connect your AI';
     case 'tool':
       return CLIENTS.find((client) => client.id === route.id)?.name ?? 'Back';
     case 'token':
-      return 'Link';
+      return 'Connection prompt';
     case 'sites':
-      return 'Sites';
+      return 'Website access';
     case 'activity':
       return 'Activity';
     case 'browser':
-      return 'Browser';
+      return 'Settings';
   }
 }
 
@@ -91,7 +92,7 @@ function App() {
     focusedRoute.current = route;
     heading.tabIndex = -1;
     heading.focus({ preventScroll: true });
-    window.scrollTo({ top: 0 });
+    screen.current?.scrollTo({ top: 0 });
   }, [route, state]);
   const below = stack[stack.length - 2];
   const navigation = useMemo<Navigation>(
@@ -103,8 +104,17 @@ function App() {
   return (
     <TooltipProvider>
       <NavigationContext.Provider value={navigation}>
-        <div ref={screen} key={`${stack.length}-${route.name}`} className={stack.length > 1 || direction === 'pop' ? (direction === 'push' ? 'screen-push' : 'screen-pop') : undefined}>
-          {renderScreen(route, state, refresh)}
+        <div className="flex h-dvh flex-col overflow-hidden">
+          <div ref={screen} className="min-h-0 flex-1 overflow-y-auto">
+            <div key={`${stack.length}-${route.name}`} className={stack.length > 1 || direction === 'pop' ? (direction === 'push' ? 'screen-push' : 'screen-pop') : undefined}>
+              {renderScreen(route, state, refresh)}
+            </div>
+          </div>
+          {(route.name === 'home' || route.name === 'connect') && (
+            <div className="shrink-0">
+              <Suggestion state={state} onChange={refresh} />
+            </div>
+          )}
         </div>
       </NavigationContext.Provider>
     </TooltipProvider>

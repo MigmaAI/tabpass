@@ -260,3 +260,46 @@ test('the ESM module imports during SSR and rejects only when a browser API is c
   const child = spawnSync(process.execPath, ['--input-type=module', '--eval', script], { encoding: 'utf8' });
   assert.equal(child.status, 0, child.stderr || child.stdout);
 });
+
+
+test('hello and status accept optional browser identity while rejecting malformed identity', async () => {
+  const browser = { browserId: 'abcdefghijklmnop', browserName: 'Chrome on Mac' };
+  fakeWindow.onPost = request => successFor(request, {
+    name: 'Tabpass', version: '0.3.1', protocol: 1, connected: true, ...browser,
+  });
+  assert.equal((await sdk.hello()).browserId, browser.browserId);
+  fakeWindow.onPost = request => successFor(request, { connected: true, access: 'read', name: 'Migma', ...browser });
+  assert.equal((await sdk.status()).browserName, browser.browserName);
+  fakeWindow.onPost = request => successFor(request, { connected: false, access: null, name: null, browserId: 'invalid' });
+  await assert.rejects(sdk.status(), { code: 'invalid_response' });
+});
+
+
+test('extension identity stays private until site approval and follows the grant relay', async () => {
+  const { handleWebMessage } = await import('../../extension/public/lib/web-connect.js');
+  const { browserIdFromKey, relayKey } = await import('../../extension/public/lib/crypto.js');
+  const settings = { browserKey: 'fixture-browser-key', browserName: 'Work Chrome', relayUrl: 'wss://new.example/extension' };
+  let agents = [];
+  Object.defineProperty(globalThis, 'chrome', { configurable: true, value: {
+    storage: { local: { get: async () => ({ settings, agents, accounts: [] }) } },
+    runtime: { getManifest: () => ({ version: 'test' }) },
+  } });
+  try {
+    const sender = { origin: ORIGIN, frameId: 0 };
+    assert.deepEqual(await handleWebMessage({ method: 'hello' }, sender, {}), { silent: true });
+    const unapproved = await handleWebMessage({ method: 'hello', activated: true }, sender, {});
+    assert.equal(unapproved.result.connected, false);
+    assert.equal('browserId' in unapproved.result, false);
+    assert.equal('browserName' in unapproved.result, false);
+    agents = [{ origin: ORIGIN, label: 'Migma', access: 'read', relayUrl: 'wss://original.example/extension' }];
+    const expected = await browserIdFromKey(await relayKey(settings.browserKey, agents[0].relayUrl));
+    for (const method of ['hello', 'status']) {
+      const response = await handleWebMessage({ method }, sender, {});
+      assert.equal(response.result.browserId, expected);
+      assert.equal(response.result.browserName, 'Work Chrome');
+      assert.equal('token' in response.result, false);
+    }
+    const foreign = await handleWebMessage({ method: 'status', activated: true }, { origin: 'https://other.example', frameId: 0 }, {});
+    assert.equal('browserId' in foreign.result, false);
+  } finally { delete globalThis.chrome; }
+});

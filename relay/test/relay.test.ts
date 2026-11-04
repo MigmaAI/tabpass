@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { PROTOCOL_VERSION } from '../src/core/protocol.js';
 import { createRelayServer, type RelayServer } from '../src/node/server.js';
 import { browserIdFromKey } from '../src/core/tokens.js';
-import { BROWSER_TOOLS } from '../src/core/tools.js';
+import { BROWSER_TOOLS, SERVER_INSTRUCTIONS } from '../src/core/tools.js';
 
 import { FakeExtension, makeAgent, type FakeAgent } from './helpers.js';
 
@@ -60,6 +60,26 @@ describe('relay', () => {
     return connected;
   }
 
+  it('reports authenticated browser identity and live status without reading tabs', async () => {
+    const { extension, agents } = await startExtension(async key => [await makeAgent(key, 'Migma', 'read')]);
+    const agent = agents[0]!;
+    const check = (token?: string) => fetch(`${base}/browser-status`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    expect((await check()).status).toBe(401);
+    expect((await check('broken')).status).toBe(401);
+    const online = await check(agent.token);
+    expect(online.headers.get('cache-control')).toBe('no-store');
+    expect(await online.json()).toEqual({ status: 'online', browser: { id: await extension.browserId(), name: 'Test Chrome' } });
+    expect(extension.calls).toHaveLength(0);
+    const stranger = await makeAgent(extension.browserKey, 'Other', 'read');
+    expect(await (await check(stranger.token)).json()).toEqual({ status: 'revoked' });
+    expect((await fetch(`${base}/browser-status`, { method: 'POST', headers: { Authorization: `Bearer ${agent.token}` } })).status).toBe(405);
+    await extension.close();
+    await new Promise(resolve => setTimeout(resolve, 30));
+    expect(await (await check(agent.token)).json()).toEqual({ status: 'offline' });
+  });
+
   it('welcomes the extension with its browser id and the public MCP url', async () => {
     const extension = new FakeExtension();
     extensions.push(extension);
@@ -87,6 +107,17 @@ describe('relay', () => {
       tokenHash: agent.tokenHash,
       args: { tabId: 7, interactive: true },
     });
+  });
+
+  it('requires a page read before using tab content and tells agents to clarify ambiguity', () => {
+    const listTabs = BROWSER_TOOLS.find((tool) => tool.name === 'list_tabs');
+    const readPage = BROWSER_TOOLS.find((tool) => tool.name === 'read_page');
+    expect(listTabs?.description).toContain('does not read page content');
+    expect(listTabs?.description).toContain('call read_page before answering');
+    expect(listTabs?.description).toContain('ask the user instead of guessing');
+    expect(readPage?.description).toContain('Read a tab as clean text');
+    expect(SERVER_INSTRUCTIONS).toContain('Never infer page content from a title or URL');
+    expect(SERVER_INSTRUCTIONS).toContain('ask which tab to use instead of guessing');
   });
 
   it('passes screenshots through as image content', async () => {

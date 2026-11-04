@@ -65,18 +65,24 @@ hello({ signal?: AbortSignal, timeoutMs?: number } = {}): Promise<{
   version: string;
   protocol: 1;
   connected: boolean;
+  browserId?: string;
+  browserName?: string;
 }>;
 
 status({ signal?: AbortSignal, timeoutMs?: number } = {}): Promise<{
   connected: boolean;
   access: 'read' | 'control' | null;
   name: string | null;
+  browserId?: string;
+  browserName?: string;
 }>;
 
 disconnect({ signal?: AbortSignal, timeoutMs?: number } = {}): Promise<{
   disconnected: number;
 }>;
 ```
+
+The optional browser identity fields are a local additive implementation awaiting extension/SDK release. They are returned only to previously approved sites and may be absent on older extensions. `connected` describes a saved grant; it does not establish that the relay is online.
 
 The default timeout is 130 seconds for `connect`, 1.5 seconds for `hello` and `status`, and 10 seconds for `disconnect`. There is no automatic retry, storage, network request, install redirect, or navigation. `relay: true` is reserved for relay authorization pages and is intentionally absent from this SDK.
 

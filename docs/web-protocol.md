@@ -49,7 +49,9 @@ Is Tabpass here?
 ← { name: 'Tabpass', version: '0.3.0', protocol: 1, connected: false }
 ```
 
-`connected` is true when this site has an AI tool connected in this browser.
+`connected` is true when this site has an AI tool connected in this browser. This is a saved grant, not a live connection check.
+
+Local additive implementation (extension release required): approved sites may also receive `browserId` and `browserName` from `hello` and `status`. The ID is scoped to the grant’s relay, not shared between relays. Unapproved sites receive neither field. Older extensions omit them. Treat these fields only as UI hints; backend token verification remains authoritative.
 
 ### `status`
 
@@ -119,6 +121,12 @@ Send the token to your server and keep it there. Do not leave it in the page: an
 Every participating website needs its own authenticated backend and MCP client. The backend allowlists the expected Tabpass endpoint, stores the token, calls `mcpUrl` with `Authorization: Bearer <token>`, and verifies the MCP connection before returning a connected state to the page. Never fetch an arbitrary page-provided `mcpUrl`: any script on the page can forge a same-origin `postMessage` response. Adding the browser SDK does not automatically enable ChatGPT, Claude, or another AI product.
 
 The page should POST the result to its authenticated same-site backend immediately, then drop its reference. Never put the token in `localStorage`, session storage, analytics, logs, or a URL. `connectorUrl` exists for MCP clients that can only accept a URL; do not use it as a browser navigation target because it contains the credential.
+
+## Live browser availability
+
+Local relay implementation (deployment required): `GET /browser-status` with `Authorization: Bearer <token>` returns `{ status: 'online', browser: { id, name } }`, `{ status: 'offline' }`, or `{ status: 'revoked' }`. It reads relay socket state without listing or reading tabs. Browser identity is returned only after the live browser’s saved grant matches the token. Responses are `Cache-Control: no-store`; missing/malformed tokens return 401. A stopped browser cannot validate an old token, so offline means unavailable rather than proof of a still-valid grant. A transport failure or older relay without this route means unknown, never online.
+
+The website backend should expose only safe status to the signed-in person. Keep the token server-side. Name and availability can be shown in every browser, but they describe the linked browser, not necessarily the browser showing the website. Switch only after user approval and a successful revision-checked save; do not disconnect the previous saved browser first.
 
 ## Relays use it too
 

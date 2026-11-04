@@ -32,10 +32,10 @@ function SitesScreen({ state, onChange }: { state: TabpassState; onChange: () =>
 
   return (
     <>
-      <NavBar title="Sites" back={{ label: backLabel, onClick: pop }} />
+      <NavBar title="Website access" back={{ label: backLabel, onClick: pop }} />
       <div className="grid gap-6 px-4 pt-4 pb-8">
-        <div className="grid gap-1 px-1"><h2 className="text-[23px] leading-7 font-semibold tracking-[-0.04em]">Set the boundaries.</h2><p className="text-[12px] leading-[17px] text-muted-foreground">Choose where connected tools can work.</p></div>
-        <ListSection footer={state.settings.allowAllSites ? 'Agents use any site without asking.' : 'Agents ask you before each new site.'}>
+        <p className="px-1 text-[13px] leading-[18px] text-muted-foreground">Choose which websites your AI can access.</p>
+        <ListSection footer={state.settings.allowAllSites ? 'Connected AI can access any website except those you block.' : 'Your AI must ask before accessing a new website.'}>
           <ListRow
             title="Allow every site"
             trailing={
@@ -50,7 +50,7 @@ function SitesScreen({ state, onChange }: { state: TabpassState; onChange: () =>
         <ListSection title="Always allowed">
           <SiteRows sites={state.sites.allowed} list="allowed" onChange={onChange} />
         </ListSection>
-        <ListSection title="Blocked" footer="Blocked sites are hidden from agents, even in the list of tabs.">
+        <ListSection title="Blocked" footer="Your AI cannot see blocked websites, even in the tab list.">
           <SiteRows sites={state.sites.blocked} list="blocked" onChange={onChange} />
         </ListSection>
         <form onSubmit={add} className="grid gap-2">
@@ -78,7 +78,7 @@ function SitesScreen({ state, onChange }: { state: TabpassState; onChange: () =>
         open={confirmAll}
         onOpenChange={setConfirmAll}
         title="Allow every site?"
-        description="Every agent could then read and use any site you are signed in to, without asking first."
+        description="Connected AI could read websites you are signed in to without asking first. AI with “Read and act” access could also click and type. Blocked websites stay blocked."
         confirmLabel="Allow every site"
         onConfirm={() => send('setAllowAllSites', { value: true }).then(onChange)}
       />

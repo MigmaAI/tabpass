@@ -18,7 +18,7 @@ export interface BrowserDirectory {
   stats(): Promise<DirectoryStats>;
 }
 
-export type AgentLookup = { status: 'ok'; agent: AgentGrant } | { status: 'offline' } | { status: 'invalid' };
+export type AgentLookup = { status: 'ok'; agent: AgentGrant; browser?: { id: string; name: string } } | { status: 'offline' } | { status: 'invalid' };
 
 export interface AccountBrowser {
   browserId: string;

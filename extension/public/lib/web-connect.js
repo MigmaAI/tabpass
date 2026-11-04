@@ -9,7 +9,7 @@
 // The relay's own sign-in page (MCP OAuth) is just such a site: it asks with `relay: true`, so the
 // agent lives on that relay and the token goes back to the AI tool that is signing in.
 
-import { createAgentToken, relayKey } from './crypto.js';
+import { browserIdFromKey, createAgentToken, relayKey } from './crypto.js';
 import { ask, pending, settle } from './prompt-window.js';
 import { providerForOrigin } from './providers.js';
 import {
@@ -141,10 +141,16 @@ export async function handleWebMessage(message, sender, connections) {
     case 'status': {
       if (!known && !activated) return { silent: true };
       const agent = (await getAgents()).find((candidate) => candidate.origin === origin) ?? null;
+      const settings = await getSettings();
+      // Only a site with an approved grant may read this stable, relay-scoped identity.
+      const identity = agent ? {
+        browserId: await browserIdFromKey(await relayKey(settings.browserKey, agentRelay(agent, settings))),
+        browserName: settings.browserName,
+      } : {};
       if (message.method === 'hello') {
-        return { ok: true, result: { name: 'Tabpass', version: chrome.runtime.getManifest().version, protocol: PROTOCOL, connected: Boolean(agent) } };
+        return { ok: true, result: { name: 'Tabpass', version: chrome.runtime.getManifest().version, protocol: PROTOCOL, connected: Boolean(agent), ...identity } };
       }
-      return { ok: true, result: { connected: Boolean(agent), access: agent?.access ?? null, name: agent?.label ?? null } };
+      return { ok: true, result: { connected: Boolean(agent), access: agent?.access ?? null, name: agent?.label ?? null, ...identity } };
     }
     case 'connect':
       // Only right after a click: a page can never pop windows on its own.
