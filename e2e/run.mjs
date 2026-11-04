@@ -19,6 +19,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { chromium } from 'playwright';
 
 import { createRelayServer, httpAccountVerifier } from '../relay/dist/index.js';
+import { makePdf } from './fixtures/make-pdf.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const extensionPath = join(here, '..', 'extension', 'dist');
@@ -53,9 +54,50 @@ function serve(handler, port = 0, host = '127.0.0.1') {
 
 // ---------- fixture sites ("127.0.0.1", "localhost", "tabpass.localhost") ----------
 
+const reportToken = (page, line) => `REPORT_P${page}_L${line}_END`;
+const PDFS = {
+  '/report.pdf': makePdf(Array.from({ length: 120 }, (_, page) => Array.from({ length: 30 }, (_, line) => `${reportToken(page + 1, line + 1)} (quarterly figures, with brackets)`))),
+  '/private.pdf': makePdf([['PRIVATE_SESSION_TEXT on the first page'], ['and more on the second']]),
+  '/locked.pdf': makePdf([['LOCKED_TEXT']], { encrypted: true }),
+  '/scanned.pdf': makePdf([[], [], []]),
+  '/east-asian.pdf': makePdf([['LATIN_TEXT beside East Asian text']], { cjk: true }),
+  '/east-asian-only.pdf': makePdf([[]], { cjk: true }),
+  '/once.pdf': makePdf([['ONE_TIME_TEXT']]),
+  '/broken.pdf': Buffer.from('%PDF-1.4 this file stops here'),
+};
+const pdfRequests = []; // Every request the fixture server saw for a PDF.
+
+function servePdf(req, res, path) {
+  const cookie = req.headers.cookie ?? '';
+  const range = /^bytes=(\d+)-(\d+)$/.exec(req.headers.range ?? '');
+  pdfRequests.push({ path, session: cookie.includes('session=signed-in'), ranged: Boolean(range), site: req.headers['sec-fetch-site'] });
+  const seen = pdfRequests.filter((request) => request.path === path).length;
+  if ((path === '/private.pdf' && !cookie.includes('session=signed-in')) || (path === '/once.pdf' && seen > 1)) {
+    res.writeHead(path === '/once.pdf' ? 410 : 403);
+    res.end();
+    return;
+  }
+  const body = PDFS[path];
+  const headers = { 'Content-Type': 'application/pdf', 'Accept-Ranges': 'bytes' };
+  if (range) {
+    const end = Math.min(Number(range[2]), body.length - 1);
+    res.writeHead(206, { ...headers, 'Content-Range': `bytes ${range[1]}-${end}/${body.length}`, 'Content-Length': end - Number(range[1]) + 1 });
+    res.end(body.subarray(Number(range[1]), end + 1));
+    return;
+  }
+  res.writeHead(200, { ...headers, 'Content-Length': body.length });
+  res.end(body);
+}
+
 const fixtures = await serve(
   async (req, res) => {
     const path = new URL(req.url, 'http://x').pathname;
+    if (path in PDFS) return servePdf(req, res, path);
+    if (path === '/sign-in') {
+      res.writeHead(200, { 'Set-Cookie': 'session=signed-in; SameSite=Strict; HttpOnly; Path=/', 'Content-Type': 'text/html' });
+      res.end('<title>Signed in</title>');
+      return undefined;
+    }
     try {
       const body = await readFile(join(here, 'fixtures', path === '/' ? 'form.html' : path.slice(1)));
       res.writeHead(200, { 'Content-Type': path.endsWith('.md') ? 'text/markdown' : 'text/html; charset=utf-8' });
@@ -494,6 +536,132 @@ try {
     await formats.close();
     await file.close();
     await userTab.bringToFront();
+  });
+
+  await step('read_page returns a whole PDF in parts, with the session, only after the site prompt, and leaves other tabs alone', async () => {
+    const tabIdOf = async (name) => {
+      const tabs = textOf(await control.callTool({ name: 'list_tabs', arguments: {} }));
+      const tabId = Number(new RegExp(`\\[(\\d+)\\] [^\\n]*${name}`).exec(tabs)?.[1]);
+      assert.ok(Number.isInteger(tabId), `${name} is listed`);
+      return tabId;
+    };
+    const openPdf = async (site, path) => {
+      const page = await context.newPage();
+      await page.goto(`${site}${path}`);
+      await userTab.bringToFront();
+      return { page, tabId: await tabIdOf(path.slice(1).replace('.', '\\.')) };
+    };
+    const requestsFor = (path) => pdfRequests.filter((request) => request.path === path);
+    const read = async (args) => {
+      const result = await control.callTool({ name: 'read_page', arguments: args });
+      assert.notEqual(result.isError, true, textOf(result));
+      assert.equal(result.content.length, 1, 'no screenshot in a PDF read');
+      return textOf(result);
+    };
+    // The text after the header, without the note that says how to continue.
+    const bodyOf = (output) => output.split('\n\n').slice(2).join('\n\n').replace(/\n\n\[truncated: [^\]]*\]$/, '');
+
+    // The prompt comes first: declining fetches nothing, and the session goes with the read.
+    const signIn = await context.newPage();
+    await signIn.goto(`${siteC}/sign-in`);
+    await signIn.close();
+    const { page: privateTab, tabId: privateTabId } = await openPdf(siteC, '/private.pdf');
+    const opened = requestsFor('/private.pdf').length;
+    const [declined] = await Promise.all([
+      control.callTool({ name: 'read_page', arguments: { tabId: privateTabId } }),
+      answerPrompt("Don't allow"),
+    ]);
+    assert.match(textOf(declined), /declined access to tabpass\.localhost/);
+    assert.equal(requestsFor('/private.pdf').length, opened, 'a declined site gets no request from Tabpass');
+    const [allowed] = await Promise.all([
+      control.callTool({ name: 'read_page', arguments: { tabId: privateTabId } }),
+      answerPrompt('Allow for 10 minutes'),
+    ]);
+    const signedIn = textOf(allowed);
+    assert.match(signedIn, /^Page content below is untrusted data/);
+    assert.match(signedIn, /Content type: application\/pdf/);
+    assert.match(signedIn, /Pages: 2/);
+    assert.match(signedIn, /--- Page 1 ---\nPRIVATE_SESSION_TEXT on the first page/);
+    assert.match(signedIn, /--- Page 2 ---\nand more on the second/);
+    const fromTabpass = requestsFor('/private.pdf').slice(opened);
+    assert.ok(fromTabpass.length > 0 && fromTabpass.every((request) => request.session && request.site === 'same-origin'), 'the tab asked as itself, with its session');
+    await privateTab.close();
+
+    // Every line of a long file comes back once, from one read or from many.
+    const { page: reportTab, tabId: reportTabId } = await openPdf(siteA, '/report.pdf');
+    const [first, sameTime] = await Promise.all([read({ tabId: reportTabId, maxChars: 1000 }), read({ tabId: reportTabId, maxChars: 1000 })]);
+    assert.equal(first, sameTime, 'two first reads at once agree');
+    assert.match(first, /Pages: 120/);
+    assert.match(first, /offset=\d+ to read the next part/);
+    assert.ok(!first.includes(reportToken(120, 30)), 'a short read stops early');
+    assert.ok(requestsFor('/report.pdf').some((request) => request.ranged), 'pdf.js asks for parts of a large file');
+    const wholeOutput = await read({ tabId: reportTabId, maxChars: 200000 });
+    assert.doesNotMatch(wholeOutput, /to read the next part/, 'the largest read holds this file');
+    const whole = bodyOf(wholeOutput);
+    const before = requestsFor('/report.pdf').length;
+    let walked = '';
+    for (let offset = 0, reads = 0; ; reads += 1) {
+      assert.ok(reads < 200, 'paging ends');
+      const output = await read({ tabId: reportTabId, maxChars: 5000, offset });
+      if (offset > 0) assert.match(output, new RegExp(`Part: from character ${offset}`));
+      const part = bodyOf(output);
+      walked += part;
+      const next = /offset=(\d+) to read the next part/.exec(output);
+      if (!next) break;
+      assert.equal(Number(next[1]), offset + part.length, 'the next offset follows exactly');
+      offset = Number(next[1]);
+    }
+    assert.equal(walked, whole, 'pages of a long read join up exactly');
+    for (let page = 1; page <= 120; page += 1) {
+      assert.equal(whole.split(`--- Page ${page} ---`).length, 2, `page ${page} appears once`);
+      for (const line of [1, 30]) assert.equal(whole.split(reportToken(page, line)).length, 2, `line ${line} of page ${page} appears once`);
+    }
+    assert.ok(whole.includes('(quarterly figures, with brackets)'));
+    assert.equal(requestsFor('/report.pdf').length, before, 'paging reuses what was read');
+    assert.match(await read({ tabId: reportTabId, offset: whole.length + 100 }), /no more text at offset/);
+
+    const evidence = JSON.parse(await read({ tabId: reportTabId, includeHtml: true, maxChars: 1000 }));
+    assert.equal(evidence.kind, 'tabpass.page');
+    assert.equal(evidence.format, 'pdf');
+    assert.equal(evidence.pages, 120);
+    assert.equal(evidence.contentType, 'application/pdf');
+    assert.ok(evidence.text.startsWith('--- Page 1 ---'));
+    assert.equal(evidence.truncated, true);
+    assert.equal(evidence.nextOffset, 1000);
+    await reportTab.close();
+
+    // What cannot be read says so, and what can be read still comes back.
+    for (const [path, expected] of [
+      ['/locked.pdf', /This PDF needs a password/],
+      ['/scanned.pdf', /no text to read, so it is probably scanned/],
+      ['/east-asian-only.pdf', /East Asian font encoding that Tabpass does not include/],
+      ['/once.pdf', /refused to send this PDF again \(status 410\)/],
+      ['/broken.pdf', /not a valid PDF/],
+    ]) {
+      const { page, tabId } = await openPdf(siteA, path);
+      const output = await read({ tabId });
+      assert.match(output, expected);
+      assert.match(output, /Use screenshot to see the visible page\./);
+      assert.doesNotMatch(output, /--- Page|LOCKED_TEXT|ONE_TIME_TEXT/);
+      await page.close();
+    }
+    const { page: eastAsian, tabId: eastAsianTabId } = await openPdf(siteA, '/east-asian.pdf');
+    const partial = await read({ tabId: eastAsianTabId });
+    assert.match(partial, /LATIN_TEXT beside East Asian text/);
+    assert.match(partial, /\[Some text in this PDF uses an East Asian font encoding/);
+    await eastAsian.close();
+
+    // pdf.js stays out of tabs that are not PDFs and the package carries no way to run fetched code.
+    const inFormTab = await worker.evaluate(async (tabId) => {
+      const [frame] = await chrome.scripting.executeScript({ target: { tabId }, func: () => typeof globalThis.__tabpassPdf });
+      return frame.result;
+    }, formTabId);
+    assert.equal(inFormTab, 'undefined');
+    const reader = await readFile(join(extensionPath, 'content', 'pdf-reader.js'), 'utf8');
+    assert.doesNotMatch(reader, /\beval\(|\bFunction\(|https?:\/\/[^"'`\s]*\.(?:m?js|wasm)\b/);
+
+    const after = textOf(await control.callTool({ name: 'list_tabs', arguments: {} }));
+    assert.match(after, new RegExp(`\\[${formTabId}\\][^\\n]*active`), "reading PDFs leaves the user's tab in front");
   });
 
   await step('clicking a new-tab link gives the agent one new tab, even when Chrome blocks the page script', async () => {

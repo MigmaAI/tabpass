@@ -606,12 +606,12 @@
     if (/^text\/|[/+]json$|javascript|yaml|toml/.test(contentType)) {
       return { contentType, text: (document.body?.querySelector(':scope > pre') ?? document.body)?.textContent ?? '' };
     }
+    // A PDF's text comes from pdf.js, which lib/readers.js injects only when a PDF is read.
+    if (contentType === 'application/pdf') return { contentType, text: '' };
     return {
       contentType,
       text: '',
-      note: contentType === 'application/pdf'
-        ? 'This tab shows a PDF, and Tabpass cannot read PDF text yet. Use screenshot to see the visible page.'
-        : `This tab shows ${contentType}, which has no text to read. Use screenshot to see it.`,
+      note: `This tab shows ${contentType}, which has no text to read. Use screenshot to see it.`,
     };
   }
 
@@ -1134,6 +1134,7 @@
 
   const methods = {
     readPage,
+    readPdf: (args) => globalThis.__tabpassPdf?.(args) ?? null,
     selection,
     click,
     type,

@@ -63,7 +63,7 @@ Migma uses the public Web Protocol through [`@migma/tabpass-connect`](connect/RE
 | Tool | Level | What it does |
 |---|---|---|
 | `list_tabs` | read | Tabs in every window: id, title, URL, active, groups. Blocked sites are hidden. No prompt. |
-| `read_page` | read | Markdown by default (headings, lists, links, images, tables, code). `format` returns `text`, `html`, `links`, `images` or `metadata`, `selector` reads part of a page, and `offset` continues a long read. A tab showing a `.md`, `.json`, `.txt` or `.xml` file returns it exactly. `interactive=true` adds buttons and fields with refs. Google Docs and Sheets are read through their export. |
+| `read_page` | read | Markdown by default (headings, lists, links, images, tables, code). `format` returns `text`, `html`, `links`, `images` or `metadata`, `selector` reads part of a page, and `offset` continues a long read. A tab showing a `.md`, `.json`, `.txt` or `.xml` file returns it exactly. A PDF returns its text, with a marker for each page. `interactive=true` adds buttons and fields with refs. Google Docs and Sheets are read through their export. |
 | `get_selection` | read | The text the person highlighted. |
 | `screenshot` | read | Visible part of a tab as JPEG or PNG, for questions about how a page looks. A background tab comes to the front for about a second. |
 | `extract_design` | read | Palette with roles, fonts, type scale, button styles, radii, content width, logo, key images. |
@@ -82,6 +82,7 @@ relay/        TypeScript relay. src/core runs on Web APIs only, shared by both h
                 src/node     Node server and CLI (self-hosting, Docker, tests)
 extension/    public/  service worker, tools, page agent, web protocol bridge, manifest (plain JS)
               src/     side panel and prompt windows: React 19, Tailwind v4, shadcn/ui
+                       PDF reader, built from PDF.js into content/pdf-reader.js
 e2e/          real Chromium end to end, and the store image generator
 connect/      zero-dependency TypeScript browser SDK for the web protocol
 store/        Chrome Web Store listing, privacy answers and images
@@ -166,7 +167,8 @@ yarn --cwd relay build && cd e2e && xvfb-run -a node store-assets.mjs
 
 - Clicks and keys are DOM events, not real input, so pages get no user activation. `window.open` popups, some clipboard and file-picker flows, and sites that check `event.isTrusted` will not respond.
 - Top frame only: no iframes or closed shadow roots. Canvas apps have no DOM text. The Google Docs and Sheets readers use their export endpoints and **are not yet tested against real Google accounts**.
-- Local `.docx` files and PDFs in Chrome's viewer are not supported yet.
+- Local `.docx` and PDF files are not supported yet.
+- A PDF comes back as plain text, with no tables or images. A scanned or password-protected PDF returns a note instead of text, and text in an East Asian font encoding that the file does not embed is left out, with a note, because the extension does not ship PDF.js's 1.6 MB of character maps.
 
 ## Tests
 
