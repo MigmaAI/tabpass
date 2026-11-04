@@ -14,6 +14,8 @@ const CONTROL_TOOLS = new Set([
 const OPENABLE_URL = /^(https?:|file:)/i;
 const MAX_CAPTURE_QUEUE = 6;
 const CAPTURE_INTERVAL_MS = 550;
+const SITE_READER_FORMATS = new Set(['markdown', 'text', 'html']);
+const NEW_TAB_GRACE_MS = 500;
 
 let captureQueue = Promise.resolve();
 let captureQueueSize = 0;
@@ -154,14 +156,21 @@ async function captureScreenshot(tab, format, expectedUrl) {
   });
 }
 
-async function readPage(agent, { tabId, interactive = false, includeVisuals = false, includeHtml = false, maxChars = 40000 }) {
+const continueNote = (nextOffset) => `[truncated: call read_page with offset=${nextOffset} to read the next part]`;
+
+async function readPage(agent, {
+  tabId, interactive = false, includeVisuals = false, includeHtml = false, maxChars = 40000, offset = 0, format = 'markdown', selector,
+}) {
   const tab = await pageTab(agent, tabId);
   const header = (lines) => [UNTRUSTED, '', ...lines.filter(Boolean)].join('\n');
+  const part = offset > 0 && `Part: from character ${offset}`;
 
-  if (!interactive) {
-    const special = await readWithSiteReader(tab.id, urlOf(tab));
+  if (!interactive && !selector && SITE_READER_FORMATS.has(format)) {
+    const special = await readWithSiteReader(tab.id, urlOf(tab), format);
     if (special) {
-      const truncated = special.text.length > maxChars;
+      const body = special.text.slice(offset, offset + maxChars);
+      const truncated = special.text.length > offset + maxChars;
+      const nextOffset = truncated ? offset + body.length : undefined;
       if (includeVisuals || includeHtml) {
         const current = await chrome.tabs.get(tab.id).catch(() => null);
         if (!current || urlOf(current) !== urlOf(tab)) throw new ToolError('The page changed while it was being read. Read the current tab again.');
@@ -170,39 +179,52 @@ async function readPage(agent, { tabId, interactive = false, includeVisuals = fa
         return pageEvidence(tab, {
           title: tab.title || '',
           url: urlOf(tab),
-          text: special.text.slice(0, maxChars),
+          text: body,
           truncated,
+          nextOffset,
           html: structure.html,
           htmlTruncated: structure.htmlTruncated,
         }, includeVisuals);
       }
       return text(
-        `${header([`Title: ${tab.title}`, `URL: ${urlOf(tab)}`, `Source: ${special.kind}`])}\n\n` +
-          `${special.text.slice(0, maxChars)}${truncated ? '\n\n[truncated: raise maxChars to read more]' : ''}`
+        `${header([`Title: ${tab.title}`, `URL: ${urlOf(tab)}`, `Source: ${special.kind}`, part])}\n\n` +
+          `${body}${truncated ? `\n\n${continueNote(nextOffset)}` : ''}`
       );
     }
   }
 
-  const page = await callPage(tab.id, 'readPage', { maxChars, interactive, includeHtml });
+  const page = await callPage(tab.id, 'readPage', { maxChars, offset, format, selector, interactive, includeHtml });
   if (includeVisuals || includeHtml) {
     return pageEvidence(tab, {
       title: page.title || tab.title || '',
       description: page.description,
       url: page.url || urlOf(tab),
+      format: page.format,
+      contentType: page.contentType,
       text: page.text || '',
       truncated: Boolean(page.truncated),
+      nextOffset: page.nextOffset,
+      frames: page.frames,
+      note: page.note,
       html: page.html,
       htmlTruncated: page.htmlTruncated,
       ...(interactive ? { elements: page.elements, elementsTotal: page.elementsTotal } : {}),
     }, includeVisuals);
   }
+  const blank = offset > 0
+    ? `(no more text at offset ${offset})`
+    : '(no readable text. The page may still be loading or may draw on a canvas. Use screenshot only if you need to see it.)';
   let output = `${header([
     `Title: ${page.title}`,
     `URL: ${page.url}`,
     page.lang && `Language: ${page.lang}`,
     page.description && `Description: ${page.description}`,
-  ])}\n\n${page.text || '(no readable text)'}`;
-  if (page.truncated) output += '\n\n[truncated: raise maxChars to read more]';
+    page.contentType && `Content type: ${page.contentType}`,
+    page.format && page.format !== 'markdown' && page.format !== 'raw' && `Format: ${page.format}`,
+    part,
+  ])}\n\n${page.text || page.note || blank}`;
+  if (page.truncated) output += `\n\n${continueNote(page.nextOffset)}`;
+  if (page.frames?.length) output += `\n\n[not read: frames from other sites: ${page.frames.join(', ')}]`;
   if (interactive) {
     output += `\n\n## Interactive elements (${page.elements.length} of ${page.elementsTotal}, on-screen first)\n`;
     output += page.elements.join('\n') || '(none)';
@@ -224,8 +246,13 @@ async function pageEvidence(tab, facts, includeVisuals) {
     url: facts.url,
     title: facts.title,
     ...(facts.description ? { description: facts.description } : {}),
+    ...(facts.format && facts.format !== 'markdown' ? { format: facts.format } : {}),
+    ...(facts.contentType ? { contentType: facts.contentType } : {}),
     text: facts.text,
     truncated: facts.truncated,
+    ...(facts.nextOffset !== undefined ? { nextOffset: facts.nextOffset } : {}),
+    ...(facts.frames?.length ? { frames: facts.frames } : {}),
+    ...(facts.note ? { note: facts.note } : {}),
     ...(facts.html !== undefined ? { html: facts.html, htmlTruncated: facts.htmlTruncated } : {}),
     ...(facts.elements ? { elements: facts.elements, elementsTotal: facts.elementsTotal } : {}),
   };
@@ -361,11 +388,43 @@ async function groupTabs(agent, { tabIds, title, color, ungroup = false }) {
   return text(`Grouped ${tabs.length} tab${tabs.length === 1 ? '' : 's'} into "${group.title || 'untitled'}" (${group.color}).`);
 }
 
+/** Whether a tab created during a click came from it. Chrome sets no opener on a no-opener link. */
+function cameFromClick(created, current, clickedTabId, opensTab) {
+  if (created.openerTabId === clickedTabId) return true;
+  if (!opensTab) return false;
+  const initial = created.pendingUrl || created.url;
+  return !initial || initial === opensTab || urlOf(current) === opensTab;
+}
+
 async function click(agent, { tabId, ref, selector, text: label }) {
   const tab = await pageTab(agent, tabId);
   signalActivity(agent, tab.id);
-  const { clicked } = await callPage(tab.id, 'click', { ref, selector, text: label });
-  return text(`Clicked ${clicked}. ${await afterAction(tab.id)}`);
+  const created = [];
+  const onCreated = (newTab) => created.push(newTab);
+  chrome.tabs.onCreated.addListener(onCreated);
+  let clicked;
+  let opensTab;
+  let now;
+  try {
+    ({ clicked, opensTab } = await callPage(tab.id, 'click', { ref, selector, text: label }));
+    now = await afterAction(tab.id);
+    if (opensTab && !created.length) await sleep(NEW_TAB_GRACE_MS);
+  } finally {
+    chrome.tabs.onCreated.removeListener(onCreated);
+  }
+  for (const newTab of created) {
+    const current = await chrome.tabs.get(newTab.id).catch(() => null);
+    if (!current || !cameFromClick(newTab, current, tab.id, opensTab)) continue;
+    await addToAgentGroup(agent, current.id).catch(() => undefined);
+    return text(`Clicked ${clicked}. Opened tab ${current.id}: ${urlOf(current)}`);
+  }
+  // Chrome blocks a tab that page script opens without a real user gesture, and an agent's click
+  // never counts as one. A link that should open a tab and did not gets opened here instead.
+  if (opensTab) {
+    const opened = await openTab(agent, { url: opensTab });
+    return text(`Clicked ${clicked}. ${opened.content[0].text}`);
+  }
+  return text(`Clicked ${clicked}. ${now}`);
 }
 
 async function type(agent, { tabId, ref, selector, text: value, clear = true, submit = false }) {

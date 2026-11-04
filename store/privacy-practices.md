@@ -94,7 +94,7 @@ No. All JavaScript runs from the extension package: the service worker, the side
 | Location | No | No GPS or location APIs. The relay, like any server, sees the connection's IP address; it does not store or use it to locate the user. |
 | **Web history** | **Yes** | "List tabs" sends the titles and URLs of open tabs (blocked sites hidden) to a connected agent, and every page result names the page's title and URL. |
 | User activity | No | Tabpass does not record the user's clicks, mouse, scrolling or keystrokes. Clicks and typing come from agents, not the user. The only signal is "this browser is in use" (sent at most every 30 seconds when the user switches to a Chrome window) so account calls go to the browser the person is using; it carries no page, click or key data. |
-| **Website content** | **Yes** | Page text, form field values shown on the page (not passwords), highlighted text, screenshots of the visible tab, and a page's colors, fonts and image addresses, sent when a connected agent asks, on a site the user allowed. |
+| **Website content** | **Yes** | Page text, cleaned visible HTML (no scripts, hidden fields or form values), page meta tags and structured data, text files open in a tab, form field values shown on the page (not passwords), highlighted text, screenshots of the visible tab, and a page's colors, fonts and image addresses, sent when a connected agent asks, on a site the user allowed. |
 
 ## Certifications
 

@@ -95,7 +95,8 @@ describe('relay', () => {
     expect(listTabs?.description).toContain('does not read page content');
     expect(listTabs?.description).toContain('call read_page before answering');
     expect(listTabs?.description).toContain('ask the user instead of guessing');
-    expect(readPage?.description).toContain('Read a tab as clean text');
+    expect(readPage?.description).toContain('Read a tab as clean Markdown');
+    expect(SERVER_INSTRUCTIONS).toContain('Do not take a screenshot to read a page');
     expect(SERVER_INSTRUCTIONS).toContain('Never infer page content from a title or URL');
     expect(SERVER_INSTRUCTIONS).toContain('ask which tab to use instead of guessing');
   });

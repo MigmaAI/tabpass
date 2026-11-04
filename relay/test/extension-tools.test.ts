@@ -145,6 +145,91 @@ describe('extension read_page visual evidence', () => {
     expect(capture).not.toHaveBeenCalled();
   });
 
+  it('validates format, offset and selector', () => {
+    const tool = BROWSER_TOOLS.find((candidate) => candidate.name === 'read_page')!;
+    for (const format of ['markdown', 'text', 'html', 'links', 'images', 'metadata']) {
+      expect(parseToolArgs(tool, { format })).toMatchObject({ ok: true, args: { format } });
+    }
+    expect(parseToolArgs(tool, { format: 'pixels' }).ok).toBe(false);
+    expect(parseToolArgs(tool, { offset: 40000, selector: 'main' })).toMatchObject({ ok: true, args: { offset: 40000, selector: 'main' } });
+    expect(parseToolArgs(tool, { offset: -1 }).ok).toBe(false);
+  });
+
+  it('returns the requested format without a capture and names it in the header', async () => {
+    const { capture } = installChrome([{ id: 7, windowId: 1, active: true, title: body.title, url: body.url }]);
+    mocks.callPage.mockResolvedValue({ ...body, format: 'html', text: '<main id="a">Hi</main>' });
+
+    const result = await runTool(agent, 'read_page', { tabId: 7, format: 'html', selector: 'main', offset: 5, maxChars: 2000 });
+    expect(mocks.callPage).toHaveBeenCalledWith(7, 'readPage', {
+      maxChars: 2000, offset: 5, format: 'html', selector: 'main', interactive: false, includeHtml: false,
+    });
+    expect(result.content).toHaveLength(1);
+    expect(result.content[0].text).toContain('Format: html');
+    expect(result.content[0].text).toContain('<main id="a">Hi</main>');
+    expect(mocks.readWithSiteReader).not.toHaveBeenCalled();
+    expect(capture).not.toHaveBeenCalled();
+  });
+
+  it('tells the agent the offset that continues a long page', async () => {
+    installChrome([{ id: 7, windowId: 1, active: true, title: body.title, url: body.url }]);
+    mocks.callPage.mockResolvedValue({ ...body, format: 'markdown', truncated: true, nextOffset: 40000 });
+
+    const result = await runTool(agent, 'read_page', { tabId: 7 });
+    expect(result.content[0].text).toContain('offset=40000');
+    expect(result.content[0].text).not.toContain('Format:');
+  });
+
+  it('labels a raw file and explains frames and tabs it could not read', async () => {
+    installChrome([{ id: 7, windowId: 1, active: true, title: body.title, url: body.url }]);
+    mocks.callPage.mockResolvedValue({ ...body, format: 'raw', contentType: 'application/json', text: '{"a":1}' });
+    const raw = await runTool(agent, 'read_page', { tabId: 7 });
+    expect(raw.content[0].text).toContain('Content type: application/json');
+    expect(raw.content[0].text).toContain('{"a":1}');
+
+    mocks.callPage.mockResolvedValue({ ...body, format: 'markdown', frames: ['https://other.test/embed'] });
+    const framed = await runTool(agent, 'read_page', { tabId: 7 });
+    expect(framed.content[0].text).toContain('https://other.test/embed');
+
+    mocks.callPage.mockResolvedValue({ ...body, text: '', note: 'This tab shows application/pdf.' });
+    const note = await runTool(agent, 'read_page', { tabId: 7 });
+    expect(note.content[0].text).toContain('This tab shows application/pdf.');
+    expect(note.content[0].text).not.toContain('(no readable text)');
+  });
+
+  it('asks the site reader for the requested format and pages through its text', async () => {
+    installChrome([{ id: 7, windowId: 1, active: true, title: body.title, url: body.url }]);
+    mocks.readWithSiteReader.mockResolvedValue({ kind: 'Google Doc (HTML export)', text: 'abcdefghij' } as never);
+
+    const result = await runTool(agent, 'read_page', { tabId: 7, format: 'html', offset: 2, maxChars: 3 });
+    expect(mocks.readWithSiteReader).toHaveBeenCalledWith(7, body.url, 'html');
+    expect(result.content[0].text).toContain('cde');
+    expect(result.content[0].text).not.toContain('abcde');
+    expect(result.content[0].text).toContain('offset=5');
+    expect(mocks.callPage).not.toHaveBeenCalled();
+  });
+
+  it('reads the DOM for formats and scopes a site export cannot serve', async () => {
+    installChrome([{ id: 7, windowId: 1, active: true, title: body.title, url: body.url }]);
+    mocks.readWithSiteReader.mockResolvedValue({ kind: 'Google Doc (Markdown export)', text: 'export' } as never);
+    mocks.callPage.mockResolvedValue({ ...body, format: 'links', text: '- [a](https://a.test/)' });
+
+    for (const args of [{ format: 'links' }, { format: 'images' }, { format: 'metadata' }, { selector: 'main' }]) {
+      const result = await runTool(agent, 'read_page', { tabId: 7, ...args });
+      expect(result.content[0].text).not.toContain('export');
+    }
+    expect(mocks.readWithSiteReader).not.toHaveBeenCalled();
+  });
+
+  it('carries format, paging and unread frames in the evidence envelope', async () => {
+    installChrome([{ id: 7, windowId: 1, active: true, title: body.title, url: body.url }]);
+    mocks.callPage.mockResolvedValue({
+      ...body, format: 'html', text: '<p>x</p>', truncated: true, nextOffset: 8, frames: ['https://other.test/'], html: '<p>e</p>', htmlTruncated: false,
+    });
+
+    const envelope = JSON.parse((await runTool(agent, 'read_page', { tabId: 7, format: 'html', includeHtml: true })).content[0].text);
+    expect(envelope).toMatchObject({ format: 'html', text: '<p>x</p>', nextOffset: 8, frames: ['https://other.test/'] });
+  });
+
   it('returns facts and design first, followed by genuine screenshot pixels', async () => {
     installChrome([{ id: 7, windowId: 1, active: true, title: body.title, url: body.url }]);
     const result = await runTool(agent, 'read_page', { tabId: 7, includeVisuals: true });
