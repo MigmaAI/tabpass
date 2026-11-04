@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Read formats fixture</title>
+    <meta name="description" content="Fixture description">
+    <meta property="og:title" content="Open Graph title">
+    <meta name="csrf-token" content="META_CSRF_SECRET">
+    <link rel="canonical" href="https://fixture.test/canonical">
+    <script type="application/ld+json">{"@type":"Product","name":"Trail Runner","offers":{"price":"110.00"}}</script>
+    <script>window.INLINE_STATE = 'INLINE_SCRIPT_SECRET';</script>
+    <style>.nav { color: rgb(1, 2, 3); }</style>
+  </head>
+  <body>
+    <nav id="site-nav" class="nav top"><a href="/home">Home</a> <a href="/home">Home</a> <a href="javascript:void(0)">Script link</a></nav>
+    <main id="content">
+      <h1 id="title" class="page-title"><a href="/article">Linked heading</a></h1>
+      <p>Some <strong>bold</strong>, <em>italic</em> and <code>inline code</code> text.</p>
+      <blockquote>Quoted line</blockquote>
+      <p><img alt="Hero photo" src="/hero.gif" width="320" height="200"></p>
+      <p><img alt="Inline photo" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" width="120" height="120"></p>
+      <img alt="" src="/pixel.gif" width="1" height="1">
+      <a href="/hidden-link" style="display: none">Hidden link</a>
+      <div style="display: none">DISPLAY_NONE_SECRET</div>
+      <input type="hidden" name="csrf" value="HIDDEN_INPUT_SECRET">
+      <input type="password" value="PASSWORD_SECRET">
+      <textarea>TEXTAREA_SECRET</textarea>
+
+      <pre id="listing"><code class="language-js"></code></pre>
+
+      <table id="data">
+        <thead><tr><th>Name</th><th>Value</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+
+      <table id="layout">
+        <tr>
+          <td>Layout left</td>
+          <td><table><tr><td>Layout nested</td></tr></table></td>
+        </tr>
+      </table>
+
+      <section id="cards">
+        <article class="card"><h2>Card one</h2></article>
+        <article class="card"><h2>Card two</h2></article>
+      </section>
+
+      <iframe id="same" src="/second.html" width="400" height="200" title="same origin"></iframe>
+      <iframe id="other" src="https://other.test/embed" width="400" height="200" title="other site"></iframe>
+      <iframe id="tracker" src="https://tracker.test/pixel" width="1" height="1" title="tracker"></iframe>
+
+      <div style="height: 3000px"></div>
+      <table id="skipped">
+        <tr><th>Lazy</th><th>Cell</th></tr>
+        <tr><td style="content-visibility: auto">LAZY_CELL_TEXT</td><td style="content-visibility: auto">other</td></tr>
+      </table>
+    </main>
+
+    <script>
+      const code = document.querySelector('#listing code');
+      code.textContent = `const start = 1;\n${'// filler line\n'.repeat(2000)}END_OF_LISTING`;
+      const rows = document.getElementById('rows');
+      for (let i = 0; i < 500; i += 1) {
+        const row = rows.insertRow();
+        row.innerHTML = `<td><a href="/rows/${i}">row${i}</a></td><td>value ${i}</td>`;
+      }
+      const hidden = rows.insertRow();
+      hidden.style.display = 'none';
+      hidden.innerHTML = '<td>HIDDEN_ROW_SECRET</td><td>hidden</td>';
+      const blank = rows.insertRow();
+      blank.innerHTML = '<td></td><td> </td>';
+    </script>
+  </body>
+</html>

@@ -63,13 +63,13 @@ Migma uses the public Web Protocol through [`@migma/tabpass-connect`](connect/RE
 | Tool | Level | What it does |
 |---|---|---|
 | `list_tabs` | read | Tabs in every window: id, title, URL, active, groups. Blocked sites are hidden. No prompt. |
-| `read_page` | read | Clean text (headings, lists, links, tables). `interactive=true` adds buttons and fields with refs. Google Docs and Sheets are read through their export. |
+| `read_page` | read | Markdown by default (headings, lists, links, images, tables, code). `format` returns `text`, `html`, `links`, `images` or `metadata`, `selector` reads part of a page, and `offset` continues a long read. A tab showing a `.md`, `.json`, `.txt` or `.xml` file returns it exactly. `interactive=true` adds buttons and fields with refs. Google Docs and Sheets are read through their export. |
 | `get_selection` | read | The text the person highlighted. |
-| `screenshot` | read | Visible part of a tab as JPEG or PNG. |
+| `screenshot` | read | Visible part of a tab as JPEG or PNG, for questions about how a page looks. A background tab comes to the front for about a second. |
 | `extract_design` | read | Palette with roles, fonts, type scale, button styles, radii, content width, logo, key images. |
 | `wait_for` | read | Wait for a load, or for text to appear. |
 | `open_tab`, `navigate`, `activate_tab`, `close_tabs`, `group_tabs` | act | Tab management. Opened tabs go into the tool's own tab group. |
-| `click`, `type`, `press_key`, `scroll` | act | Act by ref, CSS selector, or visible text. |
+| `click`, `type`, `press_key`, `scroll` | act | Act by ref, CSS selector, or visible text. Clicking a link that opens a new tab returns its tabId. |
 | `list_browsers` | read | Identify the single browser authorized by this MCP connection. Offline connections return an error. With separate connections, call it on each and use the matching server. In the development-only account mode, lists that person's browsers; other tools take a browser ID or unique name. |
 
 Every page result starts with a line marking the content as untrusted, and the server instructions tell tools never to follow instructions found in pages.

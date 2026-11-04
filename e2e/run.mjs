@@ -58,7 +58,7 @@ const fixtures = await serve(
     const path = new URL(req.url, 'http://x').pathname;
     try {
       const body = await readFile(join(here, 'fixtures', path === '/' ? 'form.html' : path.slice(1)));
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.writeHead(200, { 'Content-Type': path.endsWith('.md') ? 'text/markdown' : 'text/html; charset=utf-8' });
       res.end(body);
     } catch {
       res.writeHead(404);
@@ -156,9 +156,12 @@ const callbackUrl = `http://127.0.0.1:${callbackServer.address().port}/callback`
 const userDataDir = await mkdtemp(join(tmpdir(), 'tabpass-e2e-'));
 const context = await chromium.launchPersistentContext(userDataDir, {
   headless: false,
+  // Playwright turns the popup blocker off, which would hide what real Chrome does to agent clicks.
+  ignoreDefaultArgs: ['--disable-popup-blocking'],
   executablePath,
   viewport: { width: 1200, height: 800 },
   args: [
+    ...(process.env.E2E_HEADLESS ? ['--headless=new'] : []),
     `--disable-extensions-except=${extensionPath}`,
     `--load-extension=${extensionPath}`,
     '--no-first-run',
@@ -431,6 +434,100 @@ try {
     assert.doesNotMatch(evidence.html, /DISPLAY_NONE_SECRET|ARIA_HIDDEN_SECRET|hidden-display|hidden-aria/);
     assert.doesNotMatch(evidence.html, /TEXTAREA_DRAFT_SECRET|EDITABLE_DOCUMENT_TEXT|<textarea/);
     await productTab.close();
+    await userTab.bringToFront();
+  });
+
+  await step('read_page returns every format and whole files, in the isolated world, without touching the active tab', async () => {
+    const formats = await context.newPage();
+    await formats.goto(`${siteA}/read-formats.html`);
+    const file = await context.newPage();
+    await file.goto(`${siteA}/notes.md`);
+    await userTab.bringToFront();
+    const tabs = textOf(await control.callTool({ name: 'list_tabs', arguments: {} }));
+    const formatsTabId = Number(/\[(\d+)\] Read formats fixture/.exec(tabs)?.[1]);
+    const fileTabId = Number(/\[(\d+)\] [^\n]*notes\.md/.exec(tabs)?.[1]);
+    assert.ok(Number.isInteger(formatsTabId) && Number.isInteger(fileTabId), 'fixture tabs are listed');
+
+    const read = async (args) => {
+      const result = await control.callTool({ name: 'read_page', arguments: args });
+      assert.notEqual(result.isError, true, textOf(result));
+      assert.equal(result.content.length, 1, 'no image in a plain read');
+      return textOf(result);
+    };
+    const secrets = /INLINE_SCRIPT_SECRET|META_CSRF_SECRET|HIDDEN_INPUT_SECRET|PASSWORD_SECRET|TEXTAREA_SECRET|DISPLAY_NONE_SECRET|HIDDEN_ROW_SECRET/;
+
+    const markdown = await read({ tabId: formatsTabId, maxChars: 200000 });
+    assert.match(markdown, new RegExp(`^# \\[Linked heading\\]\\(${siteA}/article\\)$`, 'm'));
+    assert.ok(markdown.includes('END_OF_LISTING') && markdown.includes(`[row499](${siteA}/rows/499)`), 'long code and tables are complete');
+    assert.ok(markdown.includes('LAZY_CELL_TEXT'), 'skipped cells are read');
+    assert.ok(markdown.includes('Back to form'), 'a same-origin frame is read from the isolated world');
+    assert.ok(markdown.includes('[not read: frames from other sites: https://other.test/embed]'));
+    assert.doesNotMatch(markdown, secrets);
+
+    const part = await read({ tabId: formatsTabId, maxChars: 1000 });
+    assert.match(part, /offset=\d+ to read the next part/);
+    const next = Number(/offset=(\d+)/.exec(part)[1]);
+    assert.match(await read({ tabId: formatsTabId, maxChars: 1000, offset: next }), new RegExp(`Part: from character ${next}`));
+
+    const html = await read({ tabId: formatsTabId, format: 'html', maxChars: 200000 });
+    assert.match(html, /Format: html/);
+    assert.match(html, /<nav id="site-nav" class="nav top">/);
+    assert.ok(html.includes('END_OF_LISTING'));
+    assert.doesNotMatch(html, secrets);
+    assert.doesNotMatch(html, /<script|<style|<input|<textarea/);
+
+    assert.match(await read({ tabId: formatsTabId, format: 'text', selector: 'h1' }), /Linked heading$/);
+    assert.match(await read({ tabId: formatsTabId, format: 'links' }), new RegExp(`- \\[Home\\]\\(${siteA}/home\\)`));
+    assert.match(await read({ tabId: formatsTabId, format: 'images' }), new RegExp(`- !\\[Hero photo\\]\\(${siteA}/hero\\.gif\\) \\d+x\\d+`));
+    assert.match(await read({ tabId: formatsTabId, format: 'metadata' }), /"price": "110\.00"/);
+
+    const raw = await read({ tabId: fileTabId });
+    assert.match(raw, /Content type: text\/markdown/);
+    assert.ok(raw.endsWith(await readFile(join(here, 'fixtures', 'notes.md'), 'utf8')), 'a file in a tab comes back exactly');
+
+    const missing = await control.callTool({ name: 'read_page', arguments: { tabId: formatsTabId, selector: '.nothing-here' } });
+    assert.equal(missing.isError, true);
+    assert.match(textOf(missing), /No element matches/);
+
+    const after = textOf(await control.callTool({ name: 'list_tabs', arguments: {} }));
+    assert.match(after, new RegExp(`\\[${formTabId}\\][^\\n]*active`), "reading background tabs leaves the user's tab in front");
+    await formats.close();
+    await file.close();
+    await userTab.bringToFront();
+  });
+
+  await step('clicking a new-tab link gives the agent one new tab, even when Chrome blocks the page script', async () => {
+    const links = await context.newPage();
+    await links.goto(`${siteA}/links.html`);
+    await userTab.bringToFront();
+    const tabs = textOf(await control.callTool({ name: 'list_tabs', arguments: {} }));
+    const tabId = Number(/\[(\d+)\] Links fixture/.exec(tabs)?.[1]);
+    const click = (selector) => control.callTool({ name: 'click', arguments: { tabId, selector } });
+    const tabsAt = (query) => context.pages().filter((page) => page.url().endsWith(`/second.html?from=${query}`));
+    const opens = async (selector, query) => {
+      const result = await click(selector);
+      assert.notEqual(result.isError, true, textOf(result));
+      assert.match(textOf(result), /Opened tab \d+/, `${selector} tells the agent the new tabId`);
+      await sleep(500);
+      assert.equal(tabsAt(query).length, 1, `${selector} opens exactly one tab`);
+      assert.equal(links.url(), `${siteA}/links.html`, 'the clicked tab stays where it was');
+    };
+
+    // Before anything that grants the page user activation: Playwright's evaluate does.
+    await opens('#scripted', 'scripted');
+    assert.equal(await links.evaluate(() => window.scriptedOpenResult), 'blocked', 'Chrome really blocked the page script');
+    await sleep(5500); // let that activation expire
+    await opens('#new-tab', 'link');
+    await opens('#rewritten', 'rewritten');
+    assert.equal(tabsAt('original').length, 0, 'the address is read after the mousedown handlers ran');
+
+    const same = await click('#same-tab');
+    assert.match(textOf(same), /Now: Second page/);
+    assert.doesNotMatch(textOf(same), /Opened tab/);
+    assert.ok(links.url().endsWith('/second.html?from=same'), 'a plain link still navigates its own tab');
+
+    for (const page of [...tabsAt('link'), ...tabsAt('rewritten'), ...tabsAt('scripted')]) await page.close();
+    await links.close();
     await userTab.bringToFront();
   });
 

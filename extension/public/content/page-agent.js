@@ -13,6 +13,7 @@
   const BLOCK_TAGS = new Set([
     'ADDRESS', 'ARTICLE', 'ASIDE', 'BLOCKQUOTE', 'DD', 'DETAILS', 'DIV', 'DL', 'DT', 'FIELDSET',
     'FIGCAPTION', 'FIGURE', 'FOOTER', 'FORM', 'HEADER', 'MAIN', 'NAV', 'P', 'SECTION', 'SUMMARY', 'CENTER',
+    'TABLE', 'CAPTION', 'THEAD', 'TBODY', 'TFOOT', 'TR', 'TD', 'TH',
   ]);
   const INTERACTIVE_SELECTOR = [
     'a[href]', 'button', 'input:not([type=hidden])', 'select', 'textarea', 'summary',
@@ -32,7 +33,7 @@
   // ---------- helpers ----------
 
   function isVisible(el) {
-    if (!(el instanceof Element)) return false;
+    if (el?.nodeType !== Node.ELEMENT_NODE) return false;
     if (el.getAttribute('aria-hidden') === 'true') return false;
     if (typeof el.checkVisibility === 'function') {
       if (!el.checkVisibility({ checkVisibilityCSS: true })) return false;
@@ -48,7 +49,7 @@
   // from actionable-element visibility: a zero-box wrapper is not clickable.
   function isReadableContainer(el) {
     if (isVisible(el)) return true;
-    if (!(el instanceof Element) || el.hidden || el.getAttribute('aria-hidden') === 'true') return false;
+    if (el?.nodeType !== Node.ELEMENT_NODE || el.hidden || el.getAttribute('aria-hidden') === 'true') return false;
     const style = getComputedStyle(el);
     return style.display === 'contents' && style.visibility !== 'hidden'
       && style.visibility !== 'collapse' && style.contentVisibility !== 'hidden';
@@ -58,9 +59,9 @@
     return text.replace(/\s+/g, ' ');
   }
 
-  function absoluteUrl(value) {
+  function absoluteUrl(value, el) {
     try {
-      return new URL(value, document.baseURI).href;
+      return new URL(value, el?.baseURI ?? document.baseURI).href;
     } catch {
       return '';
     }
@@ -208,17 +209,47 @@
 
   // ---------- reading ----------
 
-  function pageText(maxChars) {
-    const lines = [];
+  const IMAGE_MIN_PX = 16;
+  const FRAME_MIN_WIDTH = 100;
+  const FRAME_MIN_HEIGHT = 50;
+  const EVIDENCE_HTML_CHARS = 12000;
+  const EVIDENCE_HTML_TAGS = new Set('a abbr address article aside b blockquote br button caption center code dd details div dl dt em figcaption figure footer h1 h2 h3 h4 h5 h6 header hr i img li main nav ol p pre section small span strong sub summary sup table tbody td th thead tr ul'.split(' '));
+  const EVIDENCE_HTML_ATTRIBUTES = ['alt', 'title', 'aria-label', 'role', 'colspan', 'rowspan'];
+  const FULL_HTML_ATTRIBUTES = ['id', 'class', 'style', 'lang', 'dir', ...EVIDENCE_HTML_ATTRIBUTES, 'width', 'height', 'datetime'];
+  const VOID_TAGS = new Set(['area', 'br', 'col', 'hr', 'img', 'source', 'track', 'wbr']);
+  // Apps keep session values in meta tags; these are never page content.
+  const SECRET_META = /csrf|xsrf|token|nonce|secret|session|api[-_]?key/i;
+
+  // Frames from other sites stay behind their own site permission, so they are named, not read.
+  // Tracking pixels and slots too small to hold content are not worth naming.
+  function noteUnreadFrame(frame, unread) {
+    const rect = frame.getBoundingClientRect();
+    if (rect.width < FRAME_MIN_WIDTH || rect.height < FRAME_MIN_HEIGHT || !isVisible(frame)) return;
+    unread.add(/^https?:/i.test(frame.src) ? frame.src : 'an embedded frame without an address');
+  }
+
+  function isDataTable(el) {
+    if (el.querySelector('table') || el.rows.length < 2) return false;
+    for (const row of el.rows) if (row.cells.length > 1) return true;
+    return false;
+  }
+
+  function pageText(roots, maxChars, plain, unread) {
+    let lines = [];
     let inline = '';
+    let bare = plain;
+    let nested = 0;
     let budget = maxChars;
     let truncated = false;
 
+    const count = (line) => {
+      if (!nested) budget -= line.length + 1;
+    };
     const flush = () => {
-      const line = inline.trim();
+      const line = collapse(inline).trim();
       if (line) {
         lines.push(line);
-        budget -= line.length + 1;
+        count(line);
       }
       inline = '';
     };
@@ -226,22 +257,62 @@
       flush();
       if (line) {
         lines.push(line);
-        budget -= line.length + 1;
+        count(line);
       }
     };
+    const walkChildren = (el, listDepth) => {
+      for (const child of el.childNodes) walk(child, listDepth);
+      if (el.shadowRoot) for (const child of el.shadowRoot.childNodes) walk(child, listDepth);
+    };
 
-    const inlineText = (el) => collapse(el.innerText ?? el.textContent ?? '').trim();
+    // An element's content as one line, by the same visibility rules as everything else. innerText
+    // would read as blank for content the browser has skipped rendering, and would lose its links.
+    const oneLine = (el, plainText = bare) => {
+      const outer = { lines, inline, bare };
+      lines = [];
+      inline = '';
+      bare = plainText;
+      nested += 1;
+      walkChildren(el, 0);
+      flush();
+      const line = collapse(lines.join(' ')).trim();
+      nested -= 1;
+      ({ lines, inline, bare } = outer);
+      return line;
+    };
+
+    const emphasis = (el, mark, listDepth) => {
+      const start = inline.length;
+      const before = lines.length;
+      walkChildren(el, listDepth);
+      if (bare || lines.length !== before) return; // a block inside: leave it as it was written
+      const inner = inline.slice(start);
+      const core = inner.trim();
+      if (core) inline = inline.slice(0, start) + inner.replace(core, () => `${mark}${core}${mark}`);
+    };
 
     const table = (el) => {
-      const rows = [...el.rows].slice(0, 200).map((row) =>
-        [...row.cells].map((cell) => inlineText(cell).replace(/\|/g, '\\|'))
-      );
-      if (!rows.length) return;
-      const width = Math.max(...rows.map((row) => row.length));
-      const pad = (row) => [...row, ...Array(width - row.length).fill('')];
-      push(`| ${pad(rows[0]).join(' | ')} |`);
-      push(`|${' --- |'.repeat(width)}`);
-      for (const row of rows.slice(1)) push(`| ${pad(row).join(' | ')} |`);
+      flush();
+      let width = 0;
+      for (const row of el.rows) width = Math.max(width, row.cells.length);
+      let header = true;
+      for (const row of el.rows) {
+        if (budget <= 0) {
+          truncated = true;
+          return;
+        }
+        if (!isReadableContainer(row)) continue;
+        const cells = [...row.cells].filter(isReadableContainer).map((cell) => oneLine(cell));
+        if (!cells.some(Boolean)) continue;
+        if (bare) {
+          push(cells.join('\t'));
+          continue;
+        }
+        const padded = [...cells, ...Array(width - cells.length).fill('')].map((cell) => cell.replace(/\|/g, '\\|'));
+        push(`| ${padded.join(' | ')} |`);
+        if (header) push(`|${' --- |'.repeat(width)}`);
+        header = false;
+      }
     };
 
     const walk = (node, listDepth) => {
@@ -256,11 +327,23 @@
       if (node.nodeType !== Node.ELEMENT_NODE) return;
       const el = node;
       const tag = el.tagName.toUpperCase();
+      if (tag === 'IFRAME') {
+        const body = el.contentDocument?.body;
+        if (body) {
+          flush();
+          walk(body, listDepth);
+          flush();
+        } else {
+          noteUnreadFrame(el, unread);
+        }
+        return;
+      }
       if (SKIP_TAGS.has(tag) || !isReadableContainer(el)) return;
 
       const heading = /^H([1-6])$/.exec(tag);
       if (heading) {
-        push(`${'#'.repeat(Number(heading[1]))} ${inlineText(el)}`);
+        const title = oneLine(el);
+        if (title) push(bare ? title : `${'#'.repeat(Number(heading[1]))} ${title}`);
         return;
       }
       switch (tag) {
@@ -268,28 +351,57 @@
           flush();
           return;
         case 'HR':
-          push('---');
+          if (!bare) push('---');
           return;
-        case 'PRE':
-          push(`\`\`\`\n${(el.innerText ?? '').slice(0, 5000)}\n\`\`\``);
+        case 'PRE': {
+          const code = el.innerText || el.textContent || '';
+          const language = /language-([\w+-]+)/.exec(`${el.className} ${el.querySelector('code')?.className ?? ''}`)?.[1] ?? '';
+          push(bare ? code : `\`\`\`${language}\n${code}\n\`\`\``);
           return;
+        }
         case 'TABLE':
-          flush();
+          if (!isDataTable(el)) break;
           table(el);
           return;
         case 'IMG': {
           const alt = el.getAttribute('alt')?.trim();
-          if (alt && el.width >= 60) inline += ` ![${alt}](${el.currentSrc || el.src}) `;
+          if (bare || !alt || el.width < 60) return;
+          const src = el.currentSrc || el.src;
+          inline += src.startsWith('data:') ? ` ![${alt}] ` : ` ![${alt}](${src}) `;
           return;
         }
         case 'A': {
-          const text = inlineText(el);
           const href = el.getAttribute('href');
-          if (text && href && !href.startsWith('#') && !href.startsWith('javascript:')) {
-            inline += ` [${text}](${absoluteUrl(href)}) `;
-            return;
-          }
-          break;
+          if (bare || !href || href.startsWith('#') || /^javascript:/i.test(href)) break;
+          const label = oneLine(el, true) || el.getAttribute('aria-label')?.trim() || el.querySelector('img[alt]')?.getAttribute('alt')?.trim();
+          if (!label) break;
+          inline += ` [${label}](${absoluteUrl(href, el)}) `;
+          return;
+        }
+        case 'B':
+        case 'STRONG':
+          emphasis(el, '**', listDepth);
+          return;
+        case 'I':
+        case 'EM':
+          emphasis(el, '*', listDepth);
+          return;
+        case 'S':
+        case 'DEL':
+          emphasis(el, '~~', listDepth);
+          return;
+        case 'CODE':
+        case 'KBD':
+        case 'SAMP':
+          emphasis(el, '`', listDepth);
+          return;
+        case 'BLOCKQUOTE': {
+          flush();
+          const before = lines.length;
+          walkChildren(el, listDepth);
+          flush();
+          if (!bare) for (let i = before; i < lines.length; i += 1) lines[i] = `> ${lines[i]}`;
+          return;
         }
         case 'UL':
         case 'OL': {
@@ -299,7 +411,7 @@
             if (child.tagName !== 'LI' || !isReadableContainer(child)) continue;
             const marker = tag === 'OL' ? `${index++}.` : '-';
             const before = lines.length;
-            for (const grandchild of child.childNodes) walk(grandchild, listDepth + 1);
+            walkChildren(child, listDepth + 1);
             flush();
             const indent = '  '.repeat(listDepth);
             if (lines.length > before) lines[before] = `${indent}${marker} ${lines[before]}`;
@@ -312,19 +424,15 @@
 
       const block = BLOCK_TAGS.has(tag) || tag === 'LI';
       if (block) flush();
-      for (const child of el.childNodes) walk(child, listDepth);
-      if (el.shadowRoot) for (const child of el.shadowRoot.childNodes) walk(child, listDepth);
+      walkChildren(el, listDepth);
       if (block) flush();
     };
 
-    if (document.body) walk(document.body, 0);
-    flush();
-    let text = lines.join('\n').replace(/\n{3,}/g, '\n\n');
-    if (text.length > maxChars) {
-      text = text.slice(0, maxChars);
-      truncated = true;
+    for (const root of roots) {
+      walk(root, 0);
+      flush();
     }
-    return { text, truncated };
+    return { body: lines.join('\n'), cut: truncated };
   }
 
   function pageInfo() {
@@ -338,12 +446,14 @@
     };
   }
 
-  // Structural evidence only. Build an allowlisted representation of visible
-  // DOM instead of cloning live HTML with scripts, state, events or form data.
-  function pageHtml() {
-    const maxChars = 12000;
-    const allowed = new Set('a abbr address article aside b blockquote br button caption center code dd details div dl dt em figcaption figure footer h1 h2 h3 h4 h5 h6 header hr i img li main nav ol p pre section small span strong sub summary sup table tbody td th thead tr ul'.split(' '));
-    const voidTags = new Set(['br', 'hr', 'img']);
+  // Visible structure only. Build an allowlisted representation instead of cloning live HTML with
+  // its scripts, state, events or form data. `full` keeps real tag names, id, class and style, reads
+  // same-origin frames and is bounded only by maxChars; a stopped full read is cut mid-document, so
+  // the same prefix comes back at any larger limit and paging by offset stays exact.
+  function pageHtml(roots, { maxChars = EVIDENCE_HTML_CHARS, full = false, unread } = {}) {
+    const attributes = full ? FULL_HTML_ATTRIBUTES : EVIDENCE_HTML_ATTRIBUTES;
+    const maxNodes = full ? Infinity : 1500;
+    const maxDepth = full ? 1000 : 60;
     const pieces = [];
     let length = 0;
     let closingChars = 0;
@@ -351,47 +461,215 @@
     let truncated = false;
     const escape = (value) => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const append = (value) => {
+      if (full) {
+        pieces.push(value);
+        length += value.length;
+        if (length > maxChars) truncated = true;
+        return true;
+      }
       if (length + value.length + closingChars > maxChars) { truncated = true; return false; }
       pieces.push(value);
       length += value.length;
       return true;
     };
-    const walk = (node, depth) => {
+    const tagFor = (node) => {
+      if (full) return /^[a-z][a-z0-9-]*$/.test(node.localName) ? node.localName : 'div';
+      return EVIDENCE_HTML_TAGS.has(node.localName) ? node.localName : 'div';
+    };
+    const walk = (node, depth, preformatted) => {
       if (truncated) return;
-      if (++nodes > 1500 || depth > 60) { truncated = true; return; }
-      if (node.nodeType === Node.TEXT_NODE) { append(escape(collapse(node.textContent ?? ''))); return; }
-      if (!(node instanceof Element)) return;
-      if (SKIP_TAGS.has(node.tagName) || !isReadableContainer(node) || node.isContentEditable) return;
-      const tag = allowed.has(node.localName) ? node.localName : 'div';
+      if (++nodes > maxNodes || depth > maxDepth) { truncated = true; return; }
+      if (node.nodeType === Node.TEXT_NODE) {
+        const value = node.textContent ?? '';
+        append(escape(full && preformatted ? value : collapse(value)));
+        return;
+      }
+      if (node.nodeType !== Node.ELEMENT_NODE) return;
+      if (full && node.localName === 'iframe') {
+        const body = node.contentDocument?.body;
+        if (body) for (const child of body.childNodes) walk(child, depth + 1, false);
+        else noteUnreadFrame(node, unread);
+        return;
+      }
+      if (SKIP_TAGS.has(node.tagName.toUpperCase()) || !isReadableContainer(node) || node.isContentEditable) return;
+      const tag = tagFor(node);
       const attrs = [];
-      for (const name of ['alt', 'title', 'aria-label', 'role', 'colspan', 'rowspan']) {
+      for (const name of attributes) {
         const value = node.getAttribute(name);
-        if (value) attrs.push(`${name}="${escape(value.slice(0, 300))}"`);
+        if (value) attrs.push(`${name}="${escape(value.slice(0, full ? 2000 : 300))}"`);
       }
       const resource = tag === 'img' ? ['src', node.currentSrc || node.src] : tag === 'a' ? ['href', node.href] : null;
       if (resource && /^https?:\/\//i.test(resource[1]) && resource[1].length <= 2000) {
         attrs.push(`${resource[0]}="${escape(resource[1])}"`);
       }
-      const close = voidTags.has(tag) ? '' : `</${tag}>`;
+      const close = VOID_TAGS.has(tag) ? '' : `</${tag}>`;
       closingChars += close.length;
       if (!append(`<${tag}${attrs.length ? ` ${attrs.join(' ')}` : ''}>`)) { closingChars -= close.length; return; }
       if (close) {
-        for (const child of node.childNodes) walk(child, depth + 1);
-        if (node.shadowRoot) for (const child of node.shadowRoot.childNodes) walk(child, depth + 1);
+        const inner = preformatted || tag === 'pre';
+        for (const child of node.childNodes) walk(child, depth + 1, inner);
+        if (node.shadowRoot) for (const child of node.shadowRoot.childNodes) walk(child, depth + 1, inner);
         closingChars -= close.length;
         pieces.push(close);
         length += close.length;
       }
     };
-    if (document.body) walk(document.body, 0);
+    for (const root of roots) walk(root, 0, false);
     return { html: pieces.join(''), htmlTruncated: truncated };
   }
 
-  function readPage({ maxChars = 40000, interactive = false, includeHtml = false } = {}) {
-    const info = pageInfo();
-    const { text, truncated } = pageText(maxChars);
-    const result = { ...info, text, truncated };
-    if (includeHtml) Object.assign(result, pageHtml());
+  /** Every visible link, once. Stops at maxChars. */
+  function pageLinks(roots, maxChars) {
+    const seen = new Set();
+    const lines = [];
+    let length = 0;
+    for (const root of roots) {
+      for (const el of allElements(root)) {
+        if (length > maxChars) return { body: lines.join('\n'), cut: true };
+        if (el.localName !== 'a' || typeof el.href !== 'string' || !/^(https?|mailto|tel):/i.test(el.href)) continue;
+        if (seen.has(el.href) || !isVisible(el)) continue;
+        seen.add(el.href);
+        const line = `- [${collapse(accessibleName(el)).trim()}](${el.href})`;
+        lines.push(line);
+        length += line.length + 1;
+      }
+    }
+    return { body: lines.join('\n'), cut: false };
+  }
+
+  /** Every visible image with an address, once, with its size on the page. Stops at maxChars. */
+  function pageImages(roots, maxChars) {
+    const seen = new Set();
+    const lines = [];
+    let length = 0;
+    for (const root of roots) {
+      for (const el of allElements(root)) {
+        if (length > maxChars) return { body: lines.join('\n'), cut: true };
+        if (el.localName !== 'img') continue;
+        const src = el.currentSrc || el.src;
+        if (!/^https?:/i.test(src) || seen.has(src) || !isVisible(el)) continue;
+        const rect = el.getBoundingClientRect();
+        if (rect.width < IMAGE_MIN_PX || rect.height < IMAGE_MIN_PX) continue;
+        seen.add(src);
+        const line = `- ![${collapse(el.alt).trim()}](${src}) ${Math.round(rect.width)}x${Math.round(rect.height)}`;
+        lines.push(line);
+        length += line.length + 1;
+      }
+    }
+    return { body: lines.join('\n'), cut: false };
+  }
+
+  /** What the page says about itself: meta tags, JSON-LD and its outline. */
+  function pageMetadata() {
+    const meta = {};
+    for (const tag of document.querySelectorAll('meta[name], meta[property], meta[itemprop]')) {
+      const name = tag.getAttribute('property') || tag.getAttribute('name') || tag.getAttribute('itemprop');
+      const content = tag.getAttribute('content');
+      if (name && content && !SECRET_META.test(name)) meta[name] = content;
+    }
+    const jsonLd = [];
+    for (const script of document.querySelectorAll('script[type="application/ld+json"]')) {
+      try {
+        jsonLd.push(JSON.parse(script.textContent));
+      } catch {
+        // Pages ship broken JSON-LD; the rest is still useful.
+      }
+    }
+    const headings = [];
+    for (const heading of document.querySelectorAll('h1, h2, h3')) {
+      const title = collapse(heading.textContent ?? '').trim();
+      if (title && isVisible(heading)) headings.push(`${'#'.repeat(Number(heading.localName[1]))} ${title}`);
+    }
+    const href = (selector) => document.querySelector(selector)?.href ?? null;
+    return JSON.stringify({
+      title: document.title,
+      url: location.href,
+      lang: document.documentElement.lang || null,
+      canonical: href('link[rel="canonical"]'),
+      feed: href('link[rel="alternate"][type*="rss"], link[rel="alternate"][type*="atom"]'),
+      meta,
+      jsonLd,
+      headings,
+    }, null, 2);
+  }
+
+  // A tab showing a file, not a web page. Chrome wraps text files in a <pre>, so the file comes
+  // back exactly as it was served. Null for a web page.
+  function fileInTab() {
+    const contentType = (document.contentType || '').toLowerCase();
+    if (contentType === 'text/html' || contentType === 'application/xhtml+xml') return null;
+    if (/[/+]xml$/.test(contentType)) {
+      // Chrome's XML viewer replaces the document and keeps the original in this element.
+      const source = document.getElementById('webkit-xml-viewer-source-xml')?.innerHTML;
+      return { contentType, text: source ?? new XMLSerializer().serializeToString(document) };
+    }
+    if (/^text\/|[/+]json$|javascript|yaml|toml/.test(contentType)) {
+      return { contentType, text: (document.body?.querySelector(':scope > pre') ?? document.body)?.textContent ?? '' };
+    }
+    return {
+      contentType,
+      text: '',
+      note: contentType === 'application/pdf'
+        ? 'This tab shows a PDF, and Tabpass cannot read PDF text yet. Use screenshot to see the visible page.'
+        : `This tab shows ${contentType}, which has no text to read. Use screenshot to see it.`,
+    };
+  }
+
+  function rootsFor(selector) {
+    if (!selector) return document.body ? [document.body] : [];
+    let matches;
+    try {
+      matches = document.querySelectorAll(selector);
+    } catch {
+      throw new Error(`"${selector}" is not a valid CSS selector.`);
+    }
+    if (!matches.length) throw new Error(`No element matches "${selector}".`);
+    // A match inside another match would otherwise be read twice.
+    const matched = new Set(matches);
+    return [...matched].filter((el) => {
+      for (let parent = el.parentElement; parent; parent = parent.parentElement) if (matched.has(parent)) return false;
+      return true;
+    });
+  }
+
+  function renderPage(format, roots, limit, unread) {
+    switch (format) {
+      case 'text':
+        return pageText(roots, limit, true, unread);
+      case 'html': {
+        const { html, htmlTruncated } = pageHtml(roots, { maxChars: limit, full: true, unread });
+        return { body: html, cut: htmlTruncated };
+      }
+      case 'links':
+        return pageLinks(roots, limit);
+      case 'images':
+        return pageImages(roots, limit);
+      case 'metadata':
+        return { body: pageMetadata(), cut: false };
+      default:
+        return pageText(roots, limit, false, unread);
+    }
+  }
+
+  function readPage({ maxChars = 40000, offset = 0, format = 'markdown', selector, interactive = false, includeHtml = false } = {}) {
+    const limit = offset + maxChars;
+    const unread = new Set();
+    const file = fileInTab();
+    const roots = file ? rootsFor() : rootsFor(selector);
+    const { body, cut } = file ? { body: file.text, cut: false } : renderPage(format, roots, limit, unread);
+    const text = body.slice(offset, limit);
+    const truncated = cut || body.length > limit;
+    const result = {
+      ...pageInfo(),
+      format: file ? 'raw' : format,
+      text,
+      truncated,
+      ...(truncated ? { nextOffset: offset + text.length } : {}),
+      ...(unread.size ? { frames: [...unread] } : {}),
+      ...(file ? { contentType: file.contentType } : {}),
+      ...(file?.note ? { note: file.note } : {}),
+    };
+    if (includeHtml) Object.assign(result, pageHtml(roots));
     if (interactive) {
       const { lines, total } = interactiveElements(250);
       result.elements = lines;
@@ -442,9 +720,12 @@
     if (el.disabled) throw new Error('That element is disabled.');
     const label = describeElement(el);
     pointerSequence(el);
+    // Read after the pointer events: pages such as webmail rewrite the address on mousedown.
+    const link = el.closest('a[href]');
+    const opensTab = typeof link?.target === 'string' && /^_blank$/i.test(link.target) && /^https?:/i.test(link.href) ? link.href : null;
     if (typeof el.click === 'function') el.click();
     else el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, composed: true, view: window }));
-    return { clicked: label };
+    return { clicked: label, opensTab };
   }
 
   function keyInit(key) {
@@ -843,10 +1124,11 @@
     return {};
   }
 
-  async function fetchText({ url }) {
+  async function fetchText({ url, html = false }) {
     const response = await fetch(url, { credentials: 'include' });
     const type = response.headers.get('content-type') ?? '';
-    if (!response.ok || type.includes('text/html')) throw new Error(`Export failed (${response.status}).`);
+    const signedOut = !html || new URL(response.url).hostname === 'accounts.google.com';
+    if (!response.ok || (type.includes('text/html') && signedOut)) throw new Error(`Export failed (${response.status}).`);
     return { text: await response.text() };
   }
 

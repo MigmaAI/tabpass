@@ -47,7 +47,7 @@ WHAT A TOOL CAN DO
 With Read:
 - identify the browser approved for this connection
 - see the titles and addresses of your open tabs
-- read the text of a page, including tables and links
+- read a page as text, Markdown or cleaned HTML, including tables, links and text files open in a tab
 - read the text you highlighted
 - take a screenshot of the visible part of a tab
 - read a page's colors, fonts and layout

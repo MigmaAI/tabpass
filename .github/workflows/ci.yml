@@ -85,6 +85,7 @@ jobs:
           # Use Playwright's own Chromium; a CHROMIUM_PATH from the environment would override it.
           unset CHROMIUM_PATH
           mkdir -p "$SCREENSHOT_DIR"
+          node page-agent.test.mjs
           xvfb-run -a node run.mjs
 
       - name: Keep screenshots when the run fails

@@ -4,7 +4,7 @@
 
 import { callPage } from './page.js';
 
-function googleExports(url) {
+function googleExports(url, format) {
   let parsed;
   try {
     parsed = new URL(url);
@@ -16,10 +16,11 @@ function googleExports(url) {
   const doc = /^\/document\/((?:u\/\d+\/)?)d\/([^/]+)/.exec(parsed.pathname);
   if (doc) {
     const base = `https://docs.google.com/document/${doc[1]}d/${doc[2]}/export`;
-    return [
-      { url: `${base}?format=md`, kind: 'Google Doc (Markdown export)' },
-      { url: `${base}?format=txt`, kind: 'Google Doc (text export)' },
-    ];
+    const markdown = { url: `${base}?format=md`, kind: 'Google Doc (Markdown export)' };
+    const text = { url: `${base}?format=txt`, kind: 'Google Doc (text export)' };
+    if (format === 'text') return [text, markdown];
+    if (format === 'html') return [{ url: `${base}?format=html`, kind: 'Google Doc (HTML export)', html: true }, markdown, text];
+    return [markdown, text];
   }
 
   const sheet = /^\/spreadsheets\/((?:u\/\d+\/)?)d\/([^/]+)/.exec(parsed.pathname);
@@ -35,25 +36,27 @@ function googleExports(url) {
   return null;
 }
 
-async function fetchFromWorker(url) {
+async function fetchFromWorker({ url, html = false }) {
   const response = await fetch(url, { credentials: 'include' });
   const type = response.headers.get('content-type') ?? '';
-  if (!response.ok || type.includes('text/html')) throw new Error(`Export failed (${response.status})`);
+  // A signed-out export redirects to an HTML sign-in page, which is never the document.
+  const signedOut = !html || new URL(response.url).hostname === 'accounts.google.com';
+  if (!response.ok || (type.includes('text/html') && signedOut)) throw new Error(`Export failed (${response.status})`);
   return response.text();
 }
 
 /** Returns `{ kind, text }` for a page with a dedicated reader, or null to fall back to the DOM. */
-export async function readWithSiteReader(tabId, url) {
-  const candidates = googleExports(url);
+export async function readWithSiteReader(tabId, url, format) {
+  const candidates = googleExports(url, format);
   if (!candidates) return null;
   for (const candidate of candidates) {
     try {
-      return { kind: candidate.kind, text: await fetchFromWorker(candidate.url) };
+      return { kind: candidate.kind, text: await fetchFromWorker(candidate) };
     } catch {
       // The worker may lack the session cookie; retry from inside the page.
     }
     try {
-      const { text } = await callPage(tabId, 'fetchText', { url: candidate.url });
+      const { text } = await callPage(tabId, 'fetchText', { url: candidate.url, html: candidate.html });
       return { kind: candidate.kind, text };
     } catch {
       // Try the next format, then the DOM reader.

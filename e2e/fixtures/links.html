@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8"><title>Links fixture</title></head>
+  <body>
+    <a id="new-tab" href="/second.html?from=link" target="_blank">Unsubscribe</a>
+    <a id="rewritten" href="/second.html?from=original" target="_blank">Rewritten on mousedown</a>
+    <a id="scripted" href="/second.html?from=scripted" target="_blank">Opened by page script</a>
+    <a id="same-tab" href="/second.html?from=same">Same tab</a>
+    <script>
+      document.getElementById('rewritten').addEventListener('mousedown', (event) => {
+        event.currentTarget.href = '/second.html?from=rewritten';
+      });
+      // Webmail opens links from script. Chrome blocks that without a real user gesture.
+      document.getElementById('scripted').addEventListener('click', (event) => {
+        event.preventDefault();
+        window.scriptedOpenResult = window.open(event.currentTarget.href) ? 'opened' : 'blocked';
+      });
+    </script>
+  </body>
+</html>
