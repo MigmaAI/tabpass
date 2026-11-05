@@ -396,11 +396,11 @@ async function groupTabs(agent, { tabIds, title, color, ungroup = false }) {
 }
 
 /** Whether a tab created during a click came from it. Chrome sets no opener on a no-opener link. */
-function cameFromClick(created, current, clickedTabId, opensTab) {
+function cameFromClick(created, current, clickedTabId, linkUrl) {
   if (created.openerTabId === clickedTabId) return true;
-  if (!opensTab) return false;
+  if (!linkUrl) return false;
   const initial = created.pendingUrl || created.url;
-  return !initial || initial === opensTab || urlOf(current) === opensTab;
+  return initial === linkUrl || urlOf(current) === linkUrl;
 }
 
 async function click(agent, { tabId, ref, selector, text: label }) {
@@ -411,22 +411,23 @@ async function click(agent, { tabId, ref, selector, text: label }) {
   chrome.tabs.onCreated.addListener(onCreated);
   let clicked;
   let opensTab;
+  let linkUrl;
   let now;
   try {
-    ({ clicked, opensTab } = await callPage(tab.id, 'click', { ref, selector, text: label }));
+    ({ clicked, opensTab, linkUrl } = await callPage(tab.id, 'click', { ref, selector, text: label }));
     now = await afterAction(tab.id);
-    if (opensTab && !created.length) await sleep(NEW_TAB_GRACE_MS);
+    if (linkUrl && !created.length) await sleep(NEW_TAB_GRACE_MS);
   } finally {
     chrome.tabs.onCreated.removeListener(onCreated);
   }
   for (const newTab of created) {
     const current = await chrome.tabs.get(newTab.id).catch(() => null);
-    if (!current || !cameFromClick(newTab, current, tab.id, opensTab)) continue;
+    if (!current || !cameFromClick(newTab, current, tab.id, linkUrl)) continue;
     await addToAgentGroup(agent, current.id).catch(() => undefined);
     return text(`Clicked ${clicked}. Opened tab ${current.id}: ${urlOf(current)}`);
   }
-  // Chrome blocks a tab that page script opens without a real user gesture, and an agent's click
-  // never counts as one. A link that should open a tab and did not gets opened here instead.
+  // Fall back only for an uncanceled target=_blank link. The page may deliberately prevent
+  // navigation, for example while showing a confirmation, and that decision must be respected.
   if (opensTab) {
     const opened = await openTab(agent, { url: opensTab });
     return text(`Clicked ${clicked}. ${opened.content[0].text}`);

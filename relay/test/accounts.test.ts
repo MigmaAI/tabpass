@@ -69,10 +69,10 @@ describe('account mode', () => {
     relay.close();
   });
 
-  async function browser(account?: AccountCredential, browserName?: string): Promise<FakeExtension> {
+  async function browser(account?: AccountCredential, browserName?: string, extensionVersion?: string): Promise<FakeExtension> {
     const extension = new FakeExtension();
     extensions.push(extension);
-    await extension.connect(wsUrl, [], { account, browserName });
+    await extension.connect(wsUrl, [], { account, browserName, extensionVersion });
     return extension;
   }
 
@@ -104,6 +104,36 @@ describe('account mode', () => {
     expect(textOf(result)).toBe('ok:read_page');
     expect(extension.calls[0]).toMatchObject({ tool: 'read_page', args: { tabId: 3 }, account: { via: 'Claude' } });
     expect(extension.calls[0]?.tokenHash).toBeUndefined();
+  });
+
+  it('checks page-read compatibility on the chosen account browser before dispatch', async () => {
+    const old = await browser(provider.issue('user_alice'), 'Old Chrome', '0.3.5');
+    const current = await browser(provider.issue('user_alice'), 'Current Chrome', '0.4.0');
+
+    for (const args of [{ format: 'links' }, { offset: 100 }, { selector: 'main' }]) {
+      const result = await callFor('user_alice', 'read_page', { browser: await old.browserId(), tabId: 3, ...args });
+      expect(result.isError).toBe(true);
+      expect(textOf(result)).toContain('Update Tabpass to 0.4.0 or later');
+    }
+    expect(old.calls).toHaveLength(0);
+    expect(current.calls).toHaveLength(0);
+    expect((await relay.directory.stats()).pendingCalls).toBe(0);
+
+    const advanced = { tabId: 3, format: 'links', offset: 100, selector: 'main' };
+    expect(textOf(await callFor('user_alice', 'read_page', { browser: await current.browserId(), ...advanced }))).toBe('ok:read_page');
+    expect(current.calls[0]).toMatchObject({ tool: 'read_page', args: advanced, account: {} });
+    const defaults = { tabId: 3, format: 'markdown', offset: 0, interactive: true };
+    expect(textOf(await callFor('user_alice', 'read_page', { browser: await old.browserId(), ...defaults }))).toBe('ok:read_page');
+    expect(old.calls[0]).toMatchObject({ tool: 'read_page', args: defaults, account: {} });
+  });
+
+  it('rejects advanced page reads from an account browser with an unknown version', async () => {
+    const extension = await browser(provider.issue('user_alice'), 'Unknown Chrome', 'unknown');
+    const result = await callFor('user_alice', 'read_page', { tabId: 3, format: 'html' });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain('Update Tabpass to 0.4.0 or later');
+    expect(extension.calls).toHaveLength(0);
+    expect((await relay.directory.stats()).pendingCalls).toBe(0);
   });
 
   it('never routes one teammate\'s call to another teammate\'s browser', async () => {

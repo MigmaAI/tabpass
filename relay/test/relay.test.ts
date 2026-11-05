@@ -46,11 +46,14 @@ describe('relay', () => {
     relay.close();
   });
 
-  async function startExtension(agents: (key: string) => Promise<FakeAgent[]> | FakeAgent[]): Promise<{ extension: FakeExtension; agents: FakeAgent[] }> {
+  async function startExtension(
+    agents: (key: string) => Promise<FakeAgent[]> | FakeAgent[],
+    extensionVersion?: string
+  ): Promise<{ extension: FakeExtension; agents: FakeAgent[] }> {
     const extension = new FakeExtension();
     extensions.push(extension);
     const created = await agents(extension.browserKey);
-    await extension.connect(wsUrl, created);
+    await extension.connect(wsUrl, created, { extensionVersion });
     return { extension, agents: created };
   }
 
@@ -87,6 +90,49 @@ describe('relay', () => {
       tokenHash: agent.tokenHash,
       args: { tabId: 7, interactive: true },
     });
+  });
+
+  it.each(['0.3.5', '0.3.99', 'unknown', '0.4.0-beta', '0.4'])(
+    'rejects advanced page reads before dispatch for extension %s',
+    async (extensionVersion) => {
+      const { extension, agents } = await startExtension(async (key) => [await makeAgent(key, 'Claude', 'read')], extensionVersion);
+      const mcp = await client(`${base}/mcp`, agents[0]!.token);
+
+      for (const args of [{ format: 'text' }, { format: 'html' }, { offset: 1 }, { selector: 'main' }]) {
+        const result = await mcp.callTool({ name: 'read_page', arguments: { tabId: 7, ...args } });
+        expect(result.isError).toBe(true);
+        expect(textOf(result)).toContain('Update Tabpass to 0.4.0 or later');
+      }
+
+      expect(extension.calls).toHaveLength(0);
+      expect((await relay.directory.stats()).pendingCalls).toBe(0);
+    }
+  );
+
+  it.each(['0.4.0', '0.4.0.1', '0.10.0', '1.0.0'])(
+    'forwards advanced page reads to supported extension %s',
+    async (extensionVersion) => {
+      const { extension, agents } = await startExtension(async (key) => [await makeAgent(key, 'Claude', 'read')], extensionVersion);
+      const mcp = await client(`${base}/mcp`, agents[0]!.token);
+      const args = { tabId: 7, format: 'html', offset: 100, selector: 'main' };
+
+      expect(textOf(await mcp.callTool({ name: 'read_page', arguments: args }))).toBe('ok:read_page');
+      expect(extension.calls).toHaveLength(1);
+      expect(extension.calls[0]).toMatchObject({ tool: 'read_page', args });
+    }
+  );
+
+  it('keeps legacy reads, safe defaults and other tools working with an older extension', async () => {
+    const { extension, agents } = await startExtension(async (key) => [await makeAgent(key, 'Claude', 'control')], '0.3.5');
+    const mcp = await client(`${base}/mcp`, agents[0]!.token);
+    const args = { tabId: 7, format: 'markdown', offset: 0, interactive: true, includeHtml: true, maxChars: 1000 };
+
+    expect(textOf(await mcp.callTool({ name: 'read_page', arguments: { tabId: 7 } }))).toBe('ok:read_page');
+    expect(textOf(await mcp.callTool({ name: 'read_page', arguments: args }))).toBe('ok:read_page');
+    expect(textOf(await mcp.callTool({ name: 'screenshot', arguments: { tabId: 7, format: 'png' } }))).toBe('ok:screenshot');
+    expect(textOf(await mcp.callTool({ name: 'click', arguments: { tabId: 7, selector: 'button' } }))).toBe('ok:click');
+    expect(extension.calls).toHaveLength(4);
+    expect(extension.calls[1]).toMatchObject({ tool: 'read_page', args });
   });
 
   it('requires a page read before using tab content and tells agents to clarify ambiguity', () => {

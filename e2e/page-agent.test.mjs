@@ -6,10 +6,11 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const [fixture, formatsFixture, framedPage, pageAgent] = await Promise.all([
+const [fixture, formatsFixture, framedPage, linksFixture, pageAgent] = await Promise.all([
   readFile(join(here, 'fixtures', 'display-contents.html'), 'utf8'),
   readFile(join(here, 'fixtures', 'read-formats.html'), 'utf8'),
   readFile(join(here, 'fixtures', 'second.html'), 'utf8'),
+  readFile(join(here, 'fixtures', 'links.html'), 'utf8'),
   readFile(join(here, '../extension/public/content/page-agent.js'), 'utf8'),
 ]);
 const transparentGif = Buffer.from('R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=', 'base64');
@@ -21,7 +22,7 @@ async function read(page, args) {
   return response.value;
 }
 
-const SECRETS = /INLINE_SCRIPT_SECRET|META_CSRF_SECRET|HIDDEN_INPUT_SECRET|PASSWORD_SECRET|TEXTAREA_SECRET|DISPLAY_NONE_SECRET|HIDDEN_ROW_SECRET/;
+const SECRETS = /INLINE_SCRIPT_SECRET|META_CSRF_SECRET|HIDDEN_INPUT_SECRET|PASSWORD_SECRET|TEXTAREA_SECRET|DISPLAY_NONE_SECRET|HIDDEN_ROW_SECRET|ARIA_ANCESTOR_SECRET|HIDDEN_FRAME_|hidden-ancestor|frame-hidden/;
 
 try {
   {
@@ -61,7 +62,7 @@ try {
       else if (pathname === '/second.html') await route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: framedPage });
       else await route.fulfill({ status: 200, contentType: 'image/gif', body: transparentGif });
     });
-    await page.route('https://other.test/**', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '<p>CROSS_SITE_FRAME_TEXT</p>' }));
+    await page.route('https://other.test/**', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '<p>CROSS_SITE_FRAME_TEXT</p><a href="/private">CROSS_SITE_LINK</a><img alt="CROSS_SITE_IMAGE" src="/private.gif" width="80" height="60">' }));
     await page.route('https://tracker.test/**', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '' }));
     await page.goto('https://fixture.test/read-formats.html');
     await page.addScriptTag({ content: pageAgent });
@@ -83,6 +84,9 @@ try {
     assert.ok(markdown.text.includes('![Inline photo]'));
     assert.doesNotMatch(markdown.text, /data:image/, 'inline image data never reaches the agent');
     assert.ok(markdown.text.includes('Back to form'), 'a same-origin frame is read in place');
+    for (const frame of ['VISIBLE', 'NESTED', 'SHADOW']) {
+      assert.ok(markdown.text.includes(`FRAME_${frame}_TEXT`), `${frame} frame content is read`);
+    }
     assert.doesNotMatch(markdown.text, /CROSS_SITE_FRAME_TEXT/, 'a frame from another site stays behind its own permission');
     assert.deepEqual(markdown.frames, ['https://other.test/embed'], 'unread frames are named; tracking pixels are not');
     assert.doesNotMatch(markdown.text, SECRETS);
@@ -94,6 +98,8 @@ try {
     assert.match(text.text, /Some bold, italic and inline code text\./);
     assert.doesNotMatch(text.text, /\]\(|\*\*|^# |```|!\[/m);
     assert.ok(text.text.includes('END_OF_LISTING'));
+    for (const frame of ['VISIBLE', 'NESTED', 'SHADOW']) assert.ok(text.text.includes(`FRAME_${frame}_TEXT`));
+    assert.deepEqual(text.frames, ['https://other.test/embed']);
     assert.doesNotMatch(text.text, SECRETS);
 
     const html = await read(page, { format: 'html', maxChars: 200000 });
@@ -104,6 +110,8 @@ try {
     assert.match(html.text, /<strong>bold<\/strong>/);
     assert.ok(html.text.includes('END_OF_LISTING'), 'html is bounded by maxChars, not 12000 characters');
     assert.ok(html.text.includes('Back to form'), 'html includes same-origin frames');
+    for (const frame of ['VISIBLE', 'NESTED', 'SHADOW']) assert.ok(html.text.includes(`FRAME_${frame}_TEXT`));
+    assert.deepEqual(html.frames, ['https://other.test/embed']);
     assert.doesNotMatch(html.text, SECRETS);
     assert.doesNotMatch(html.text, /<script|<style|<input|<textarea|CROSS_SITE_FRAME_TEXT|data:image/);
 
@@ -121,12 +129,26 @@ try {
     assert.match(links.text, /^- \[Home\]\(https:\/\/fixture\.test\/home\)$/m);
     assert.equal(links.text.match(/\(https:\/\/fixture\.test\/home\)/g).length, 1, 'duplicate links are listed once');
     assert.ok(links.text.includes('[row499](https://fixture.test/rows/499)'));
-    assert.doesNotMatch(links.text, /javascript:|hidden-link/);
+    for (const frame of ['visible', 'nested', 'shadow']) {
+      assert.ok(links.text.includes(`[FRAME_${frame.toUpperCase()}_LINK](https://fixture.test/frame-${frame}-link)`), `${frame} frame links are listed`);
+    }
+    assert.ok(links.text.includes('[FRAME_LOCAL_LABEL](https://fixture.test/frame-labeled-link)'), 'frame labels resolve in their own document');
+    assert.ok(links.text.includes('[FRAME_SHADOW_LOCAL_LABEL](https://fixture.test/frame-shadow-labeled-link)'), 'shadow labels resolve in their own root');
+    assert.doesNotMatch(links.text, /WRONG_OUTER_FRAME_LABEL|WRONG_LINK_FALLBACK|WRONG_SHADOW_FALLBACK/, 'colliding IDs outside the link\'s root cannot supply its label');
+    assert.deepEqual(links.frames, ['https://other.test/embed'], 'links name cross-origin frames without reading them');
+    assert.doesNotMatch(links.text, /javascript:|hidden-link|CROSS_SITE/);
+    assert.doesNotMatch(links.text, SECRETS);
 
     const images = await read(page, { format: 'images' });
     assert.equal(images.format, 'images');
     assert.match(images.text, /^- !\[Hero photo\]\(https:\/\/fixture\.test\/hero\.gif\) 320x200$/m);
+    for (const frame of ['visible', 'nested', 'shadow']) {
+      assert.ok(images.text.includes(`![FRAME_${frame.toUpperCase()}_IMAGE](https://fixture.test/frame-${frame}.gif) 80x60`), `${frame} frame images are listed`);
+    }
+    assert.deepEqual(images.frames, ['https://other.test/embed'], 'images name cross-origin frames without reading them');
     assert.doesNotMatch(images.text, /pixel\.gif|data:image/, 'tracking pixels and inline data are left out');
+    assert.doesNotMatch(images.text, /CROSS_SITE/);
+    assert.doesNotMatch(images.text, SECRETS);
 
     const metadata = await read(page, { format: 'metadata' });
     const parsed = JSON.parse(metadata.text);
@@ -146,6 +168,12 @@ try {
     assert.doesNotMatch(scoped.text, /Linked heading|Home/);
     const scopedHtml = await read(page, { selector: 'h1', format: 'html' });
     assert.equal(scopedHtml.text, '<h1 id="title" class="page-title"><a href="https://fixture.test/article">Linked heading</a></h1>');
+    for (const format of ['markdown', 'text', 'html', 'links', 'images']) {
+      const hidden = await read(page, { selector: '#hidden-ancestor-content', format, includeHtml: true });
+      assert.equal(hidden.text, '', `${format} cannot read a selector inside an aria-hidden ancestor`);
+      assert.equal(hidden.html, '', 'HTML evidence respects the selected element\'s ancestors');
+      assert.equal(hidden.frames, undefined);
+    }
     const missing = await page.evaluate(() => globalThis.__tabpassAgent.call('readPage', { selector: '.nothing-here' }));
     assert.match(missing.error, /No element matches/);
     const invalid = await page.evaluate(() => globalThis.__tabpassAgent.call('readPage', { selector: '[[' }));
@@ -165,6 +193,62 @@ try {
     assert.equal((await read(page, { offset: 90_000_000 })).text, '');
 
     console.log('read formats passed');
+    await page.close();
+  }
+
+  {
+    const page = await browser.newPage();
+    await page.route('https://fixture.test/**', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: linksFixture }));
+    await page.goto('https://fixture.test/links.html');
+    await page.addScriptTag({ content: pageAgent });
+    // Model a popup blocked by Chrome without granting the page a real click gesture.
+    await page.evaluate(() => { window.open = () => null; });
+    const popups = [];
+    page.on('popup', (popup) => popups.push(popup));
+    for (const selector of ['#scripted', '#confirmation', '#stopped']) {
+      const response = await page.evaluate((selector) => globalThis.__tabpassAgent.call('click', { selector }), selector);
+      assert.equal(response.error, undefined, response.error);
+      assert.equal(response.value.opensTab, null, `${selector} cannot request a fallback after cancellation`);
+      assert.equal(page.url(), 'https://fixture.test/links.html');
+      if (selector === '#confirmation') {
+        assert.equal(await page.locator('#confirmation-modal').evaluate((dialog) => dialog.open), true, 'the page can ask for confirmation');
+        await page.locator('#cancel-confirmation').click();
+      }
+    }
+    assert.equal(await page.evaluate(() => window.scriptedOpenResult), 'blocked');
+    assert.equal(await page.locator('#stopped-result').textContent(), 'Canceled by page');
+    assert.equal(popups.length, 0);
+    for (const selector of ['#fieldset-button', '#fieldset-input', '#fieldset-nested-button']) {
+      assert.equal(await page.locator(selector).evaluate((element) => element.disabled), false, 'the fieldset supplies the disabled state');
+      const response = await page.evaluate((selector) => globalThis.__tabpassAgent.call('click', { selector }), selector);
+      assert.equal(response.error, 'That element is disabled.', `${selector} inherits its fieldset's disabled state`);
+      assert.equal(await page.locator('#disabled-click-count').textContent(), '0', 'disabled controls receive no pointer or click handlers');
+    }
+    const recursive = await page.evaluate(() => globalThis.__tabpassAgent.call('click', { selector: '#recursive-click' }));
+    assert.equal(recursive.error, undefined, recursive.error);
+    assert.equal(await page.locator('#recursive-click-count').textContent(), '1', 'native click recursion protection invokes the handler once');
+    console.log('canceled new-tab clicks passed');
+    console.log('fieldset-disabled clicks passed');
+    console.log('native recursive clicks passed');
+    await page.close();
+  }
+
+  {
+    const page = await browser.newPage();
+    const exportText = 'Full plain export\nEXPORT_END';
+    await page.route('https://fixture.test/**', (route) => {
+      const { pathname } = new URL(route.request().url());
+      if (pathname === '/signin-export') return route.fulfill({ status: 200, contentType: 'text/html', body: '<h1>SIGNIN_EXPORT_SECRET</h1>' });
+      if (pathname === '/plain-export') return route.fulfill({ status: 200, contentType: 'text/plain', body: exportText });
+      return route.fulfill({ status: 200, contentType: 'text/html', body: linksFixture });
+    });
+    await page.goto('https://fixture.test/links.html');
+    await page.addScriptTag({ content: pageAgent });
+    const html = await page.evaluate(() => globalThis.__tabpassAgent.call('fetchText', { url: 'https://fixture.test/signin-export' }));
+    assert.deepEqual(html, { error: 'Export failed (200).' }, 'an HTML sign-in page cannot become exported document text');
+    const plain = await page.evaluate(() => globalThis.__tabpassAgent.call('fetchText', { url: 'https://fixture.test/plain-export' }));
+    assert.deepEqual(plain, { value: { text: exportText } }, 'plain exports retain their full response body');
+    console.log('page-context text exports passed');
     await page.close();
   }
 

@@ -8,6 +8,25 @@
     <script>
       const q = new URLSearchParams(location.search).get('q');
       if (q) document.getElementById('query').textContent = `You searched for: ${q}`;
+      const frame = new URLSearchParams(location.search).get('frame');
+      if (frame) {
+        const marker = frame.startsWith('hidden') ? `HIDDEN_FRAME_${frame}` : `FRAME_${frame.toUpperCase()}`;
+        const content = document.createElement('section');
+        content.innerHTML = `<p>${marker}_TEXT</p><a href="/frame-${frame}-link">${marker}_LINK</a><img alt="${marker}_IMAGE" src="/frame-${frame}.gif" width="80" height="60">`;
+        document.body.appendChild(content);
+        if (frame === 'visible') {
+          content.insertAdjacentHTML('beforeend', '<span id="frame-link-label">FRAME_LOCAL_LABEL</span><a href="/frame-labeled-link" aria-labelledby="frame-link-label">WRONG_LINK_FALLBACK</a>');
+          const nested = document.createElement('iframe');
+          nested.src = '/second.html?frame=nested';
+          nested.width = '300';
+          nested.height = '200';
+          nested.title = 'nested same origin';
+          document.body.appendChild(nested);
+          const host = document.createElement('div');
+          document.body.appendChild(host);
+          host.attachShadow({ mode: 'open' }).innerHTML = '<p>FRAME_SHADOW_TEXT</p><a href="/frame-shadow-link">FRAME_SHADOW_LINK</a><img alt="FRAME_SHADOW_IMAGE" src="/frame-shadow.gif" width="80" height="60"><span id="frame-link-label">FRAME_SHADOW_LOCAL_LABEL</span><a href="/frame-shadow-labeled-link" aria-labelledby="frame-link-label">WRONG_SHADOW_FALLBACK</a>';
+        }
+      }
     </script>
   </body>
 </html>

@@ -21,6 +21,17 @@
       <p><img alt="Inline photo" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" width="120" height="120"></p>
       <img alt="" src="/pixel.gif" width="1" height="1">
       <a href="/hidden-link" style="display: none">Hidden link</a>
+      <div aria-hidden="true">
+        <section id="hidden-ancestor-content">
+          <p>ARIA_ANCESTOR_SECRET</p>
+          <a href="/hidden-ancestor-link">ARIA_ANCESTOR_SECRET link</a>
+          <img alt="ARIA_ANCESTOR_SECRET image" src="/hidden-ancestor.gif" width="80" height="60">
+        </section>
+      </div>
+      <div style="display: none">
+        <a href="/display-hidden-ancestor-link">DISPLAY_NONE_SECRET link</a>
+        <img alt="DISPLAY_NONE_SECRET image" src="/display-hidden-ancestor.gif" width="80" height="60">
+      </div>
       <div style="display: none">DISPLAY_NONE_SECRET</div>
       <input type="hidden" name="csrf" value="HIDDEN_INPUT_SECRET">
       <input type="password" value="PASSWORD_SECRET">
@@ -45,7 +56,12 @@
         <article class="card"><h2>Card two</h2></article>
       </section>
 
-      <iframe id="same" src="/second.html" width="400" height="200" title="same origin"></iframe>
+      <iframe id="same" src="/second.html?frame=visible" width="400" height="360" title="same origin"></iframe>
+      <span id="frame-link-label" aria-hidden="true">WRONG_OUTER_FRAME_LABEL</span>
+      <iframe aria-hidden="true" src="/second.html?frame=hidden" width="400" height="200" title="hidden same origin"></iframe>
+      <div aria-hidden="true">
+        <iframe src="/second.html?frame=hidden-ancestor" width="400" height="200" title="same origin in hidden ancestor"></iframe>
+      </div>
       <iframe id="other" src="https://other.test/embed" width="400" height="200" title="other site"></iframe>
       <iframe id="tracker" src="https://tracker.test/pixel" width="1" height="1" title="tracker"></iframe>
 

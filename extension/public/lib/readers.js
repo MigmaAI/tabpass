@@ -21,7 +21,9 @@ function googleExports(url, format) {
     const markdown = { url: `${base}?format=md`, kind: 'Google Doc (Markdown export)' };
     const text = { url: `${base}?format=txt`, kind: 'Google Doc (text export)' };
     if (format === 'text') return [text, markdown];
-    if (format === 'html') return [{ url: `${base}?format=html`, kind: 'Google Doc (HTML export)', html: true }, markdown, text];
+    // Google's HTML export contains scripts, styles and hidden document state. Use the text
+    // export as escaped HTML instead, with no executable markup or form values to sanitize.
+    if (format === 'html') return [{ ...text, kind: 'Google Doc (text export as HTML)', render: 'text' }];
     return [markdown, text];
   }
 
@@ -31,19 +33,50 @@ function googleExports(url, format) {
     return [
       {
         url: `https://docs.google.com/spreadsheets/${sheet[1]}d/${sheet[2]}/export?format=csv&gid=${gid}`,
-        kind: 'Google Sheet, current tab (CSV export)',
+        kind: format === 'html' ? 'Google Sheet, current tab (CSV export as HTML)' : 'Google Sheet, current tab (CSV export)',
+        ...(format === 'html' ? { render: 'csv' } : {}),
       },
     ];
   }
   return null;
 }
 
-async function fetchFromWorker({ url, html = false }) {
+function escapeHtml(text) {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// CSV exports quote commas, line breaks and doubled quotes inside cells. Preserve them while
+// building HTML from text alone; exported cell contents never become attributes or markup.
+function csvHtml(csv) {
+  const rows = [];
+  let row = [];
+  let cell = '';
+  let quoted = false;
+  const endCell = () => { row.push(`<td>${escapeHtml(cell)}</td>`); cell = ''; };
+  const endRow = () => { endCell(); rows.push(`<tr>${row.join('')}</tr>`); row = []; };
+  for (let i = 0; i < csv.length; i += 1) {
+    const char = csv[i];
+    if (quoted) {
+      if (char === '"' && csv[i + 1] === '"') { cell += '"'; i += 1; }
+      else if (char === '"') quoted = false;
+      else cell += char;
+    } else if (char === '"' && !cell) quoted = true;
+    else if (char === ',') endCell();
+    else if (char === '\r' || char === '\n') {
+      endRow();
+      if (char === '\r' && csv[i + 1] === '\n') i += 1;
+    } else cell += char;
+  }
+  if (row.length || cell || (csv && !/[\r\n]$/.test(csv))) endRow();
+  return `<table><tbody>${rows.join('')}</tbody></table>`;
+}
+
+async function fetchFromWorker({ url }) {
   const response = await fetch(url, { credentials: 'include' });
   const type = response.headers.get('content-type') ?? '';
   // A signed-out export redirects to an HTML sign-in page, which is never the document.
-  const signedOut = !html || new URL(response.url).hostname === 'accounts.google.com';
-  if (!response.ok || (type.includes('text/html') && signedOut)) throw new Error(`Export failed (${response.status})`);
+  if (!response.ok || /text\/html|application\/xhtml\+xml/i.test(type)
+    || (response.url && new URL(response.url).hostname === 'accounts.google.com')) throw new Error(`Export failed (${response.status})`);
   return response.text();
 }
 
@@ -52,17 +85,21 @@ export async function readWithSiteReader(tabId, url, format) {
   const candidates = googleExports(url, format);
   if (!candidates) return null;
   for (const candidate of candidates) {
+    let text;
     try {
-      return { kind: candidate.kind, text: await fetchFromWorker(candidate) };
+      text = await fetchFromWorker(candidate);
     } catch {
       // The worker may lack the session cookie; retry from inside the page.
+      try {
+        ({ text } = await callPage(tabId, 'fetchText', { url: candidate.url }));
+      } catch {
+        // Try the next format, then the DOM reader.
+        continue;
+      }
     }
-    try {
-      const { text } = await callPage(tabId, 'fetchText', { url: candidate.url, html: candidate.html });
-      return { kind: candidate.kind, text };
-    } catch {
-      // Try the next format, then the DOM reader.
-    }
+    if (candidate.render === 'text') text = `<pre>${escapeHtml(text)}</pre>`;
+    else if (candidate.render === 'csv') text = csvHtml(text);
+    return { kind: candidate.kind, text };
   }
   return null;
 }

@@ -496,13 +496,14 @@ try {
       assert.equal(result.content.length, 1, 'no image in a plain read');
       return textOf(result);
     };
-    const secrets = /INLINE_SCRIPT_SECRET|META_CSRF_SECRET|HIDDEN_INPUT_SECRET|PASSWORD_SECRET|TEXTAREA_SECRET|DISPLAY_NONE_SECRET|HIDDEN_ROW_SECRET/;
+    const secrets = /INLINE_SCRIPT_SECRET|META_CSRF_SECRET|HIDDEN_INPUT_SECRET|PASSWORD_SECRET|TEXTAREA_SECRET|DISPLAY_NONE_SECRET|HIDDEN_ROW_SECRET|ARIA_ANCESTOR_SECRET|HIDDEN_FRAME_|hidden-ancestor|frame-hidden/;
 
     const markdown = await read({ tabId: formatsTabId, maxChars: 200000 });
     assert.match(markdown, new RegExp(`^# \\[Linked heading\\]\\(${siteA}/article\\)$`, 'm'));
     assert.ok(markdown.includes('END_OF_LISTING') && markdown.includes(`[row499](${siteA}/rows/499)`), 'long code and tables are complete');
     assert.ok(markdown.includes('LAZY_CELL_TEXT'), 'skipped cells are read');
     assert.ok(markdown.includes('Back to form'), 'a same-origin frame is read from the isolated world');
+    for (const frame of ['VISIBLE', 'NESTED', 'SHADOW']) assert.ok(markdown.includes(`FRAME_${frame}_TEXT`));
     assert.ok(markdown.includes('[not read: frames from other sites: https://other.test/embed]'));
     assert.doesNotMatch(markdown, secrets);
 
@@ -515,12 +516,29 @@ try {
     assert.match(html, /Format: html/);
     assert.match(html, /<nav id="site-nav" class="nav top">/);
     assert.ok(html.includes('END_OF_LISTING'));
+    for (const frame of ['VISIBLE', 'NESTED', 'SHADOW']) assert.ok(html.includes(`FRAME_${frame}_TEXT`));
     assert.doesNotMatch(html, secrets);
     assert.doesNotMatch(html, /<script|<style|<input|<textarea/);
 
     assert.match(await read({ tabId: formatsTabId, format: 'text', selector: 'h1' }), /Linked heading$/);
-    assert.match(await read({ tabId: formatsTabId, format: 'links' }), new RegExp(`- \\[Home\\]\\(${siteA}/home\\)`));
-    assert.match(await read({ tabId: formatsTabId, format: 'images' }), new RegExp(`- !\\[Hero photo\\]\\(${siteA}/hero\\.gif\\) \\d+x\\d+`));
+    const plain = await read({ tabId: formatsTabId, format: 'text', maxChars: 200000 });
+    assert.doesNotMatch(plain, secrets);
+    for (const frame of ['VISIBLE', 'NESTED', 'SHADOW']) assert.ok(plain.includes(`FRAME_${frame}_TEXT`));
+    const links = await read({ tabId: formatsTabId, format: 'links' });
+    const images = await read({ tabId: formatsTabId, format: 'images' });
+    assert.match(links, new RegExp(`- \\[Home\\]\\(${siteA}/home\\)`));
+    assert.match(images, new RegExp(`- !\\[Hero photo\\]\\(${siteA}/hero\\.gif\\) \\d+x\\d+`));
+    for (const [format, output] of [['links', links], ['images', images]]) {
+      assert.doesNotMatch(output, secrets);
+      assert.ok(output.includes('[not read: frames from other sites: https://other.test/embed]'), `${format} names unread cross-origin frames`);
+      for (const frame of ['visible', 'nested', 'shadow']) {
+        assert.ok(output.includes(`${siteA}/frame-${frame}${format === 'links' ? '-link' : '.gif'}`), `${format} includes ${frame} frame assets`);
+      }
+    }
+    for (const format of ['markdown', 'text', 'html', 'links', 'images']) {
+      const hidden = await read({ tabId: formatsTabId, format, selector: '#hidden-ancestor-content' });
+      assert.doesNotMatch(hidden, secrets, `${format} does not expose a selected hidden descendant`);
+    }
     assert.match(await read({ tabId: formatsTabId, format: 'metadata' }), /"price": "110\.00"/);
 
     const raw = await read({ tabId: fileTabId });
@@ -664,7 +682,7 @@ try {
     assert.match(after, new RegExp(`\\[${formTabId}\\][^\\n]*active`), "reading PDFs leaves the user's tab in front");
   });
 
-  await step('clicking a new-tab link gives the agent one new tab, even when Chrome blocks the page script', async () => {
+  await step('new-tab clicks respect cancellation and track exactly one actual or requested tab', async () => {
     const links = await context.newPage();
     await links.goto(`${siteA}/links.html`);
     await userTab.bringToFront();
@@ -676,15 +694,43 @@ try {
       const result = await click(selector);
       assert.notEqual(result.isError, true, textOf(result));
       assert.match(textOf(result), /Opened tab \d+/, `${selector} tells the agent the new tabId`);
+      const openedTabId = Number(/Opened tab (\d+)/.exec(textOf(result))[1]);
       await sleep(500);
       assert.equal(tabsAt(query).length, 1, `${selector} opens exactly one tab`);
+      const openedTab = await worker.evaluate((id) => chrome.tabs.get(id), openedTabId);
+      assert.equal(openedTab.url, `${siteA}/second.html?from=${query}`, 'the reported tab is the actual destination');
       assert.equal(links.url(), `${siteA}/links.html`, 'the clicked tab stays where it was');
+    };
+    const canceled = async (selector, query) => {
+      const createdTabs = [];
+      const recordTab = (page) => createdTabs.push(page);
+      context.on('page', recordTab);
+      try {
+        const result = await click(selector);
+        assert.notEqual(result.isError, true, textOf(result));
+        assert.doesNotMatch(textOf(result), /Opened tab/, `${selector} preserves the page's cancellation`);
+        await sleep(500);
+        assert.equal(createdTabs.length, 0, `${selector} creates no browser tab`);
+        assert.equal(tabsAt(query).length, 0, `${selector} does not open its destination`);
+        assert.equal(links.url(), `${siteA}/links.html`, 'the canceled source tab stays where it was');
+      } finally {
+        context.off('page', recordTab);
+      }
     };
 
     // Before anything that grants the page user activation: Playwright's evaluate does.
-    await opens('#scripted', 'scripted');
+    await canceled('#scripted', 'scripted');
     assert.equal(await links.evaluate(() => window.scriptedOpenResult), 'blocked', 'Chrome really blocked the page script');
-    await sleep(5500); // let that activation expire
+    await canceled('#confirmation', 'confirmation');
+    assert.equal(await links.locator('#confirmation-modal').evaluate((dialog) => dialog.open), true);
+    await links.locator('#cancel-confirmation').click();
+    await canceled('#stopped', 'stopped');
+    assert.equal(await links.locator('#stopped-result').textContent(), 'Canceled by page');
+
+    // A permitted page-created popup is still returned, despite its canceled default action.
+    await links.evaluate(() => void 0);
+    await opens('#scripted', 'scripted');
+    assert.equal(await links.evaluate(() => window.scriptedOpenResult), 'opened');
     await opens('#new-tab', 'link');
     await opens('#rewritten', 'rewritten');
     assert.equal(tabsAt('original').length, 0, 'the address is read after the mousedown handlers ran');
