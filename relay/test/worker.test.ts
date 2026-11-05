@@ -98,12 +98,13 @@ describe.skipIf(!RUN)('Cloudflare Worker relay (workerd)', () => {
     verifyServer?.close();
   });
 
-  async function browser(options: { agents?: Awaited<ReturnType<typeof makeAgent>>[]; account?: AccountCredential; name?: string; extension?: FakeExtension } = {}): Promise<FakeExtension> {
+  async function browser(options: { agents?: Awaited<ReturnType<typeof makeAgent>>[]; account?: AccountCredential; name?: string; extension?: FakeExtension; extensionVersion?: string } = {}): Promise<FakeExtension> {
     const extension = options.extension ?? new FakeExtension();
     extensions.push(extension);
     await extension.connect(`${wsBase}?browser=${await extension.browserId()}`, options.agents ?? [], {
       account: options.account,
       browserName: options.name,
+      extensionVersion: options.extensionVersion,
     });
     return extension;
   }
@@ -145,6 +146,42 @@ describe.skipIf(!RUN)('Cloudflare Worker relay (workerd)', () => {
     expect(textOf(await client.callTool({ name: 'list_tabs', arguments: {} }))).toBe('ok:list_tabs');
     expect(extension.calls[0]).toMatchObject({ tool: 'list_tabs', tokenHash: agent.tokenHash });
     await client.close();
+  });
+
+  it.each(['0.3.5', 'unknown'])('rejects advanced token page reads before dispatch for extension %s', async (extensionVersion) => {
+    const extension = new FakeExtension();
+    const agent = await makeAgent(extension.browserKey, 'Claude', 'read');
+    await browser({ extension, agents: [agent], extensionVersion });
+    const client = await mcp(agent.token);
+    try {
+      for (const args of [{ format: 'text' }, { offset: 1 }, { selector: 'main' }]) {
+        const result = await client.callTool({ name: 'read_page', arguments: { tabId: 7, ...args } });
+        expect(result.isError).toBe(true);
+        expect(textOf(result)).toContain('Update Tabpass to 0.4.0 or later');
+      }
+      expect(extension.calls).toHaveLength(0);
+
+      expect(textOf(await client.callTool({ name: 'read_page', arguments: { tabId: 7, format: 'markdown', offset: 0 } }))).toBe('ok:read_page');
+      expect(textOf(await client.callTool({ name: 'screenshot', arguments: { tabId: 7, format: 'png' } }))).toBe('ok:screenshot');
+      expect(extension.calls).toHaveLength(2);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('forwards advanced token page reads to a supported extension', async () => {
+    const extension = new FakeExtension();
+    const agent = await makeAgent(extension.browserKey, 'Claude', 'read');
+    await browser({ extension, agents: [agent], extensionVersion: '0.4.0' });
+    const client = await mcp(agent.token);
+    try {
+      const args = { tabId: 7, format: 'html', selector: 'main', offset: 100 };
+      expect(textOf(await client.callTool({ name: 'read_page', arguments: args }))).toBe('ok:read_page');
+      expect(extension.calls).toHaveLength(1);
+      expect(extension.calls[0]).toMatchObject({ tool: 'read_page', args, tokenHash: agent.tokenHash });
+    } finally {
+      await client.close();
+    }
   });
 
   it('answers pings without waking the browser object', async () => {
@@ -278,6 +315,29 @@ describe.skipIf(!RUN)('Cloudflare Worker relay (workerd)', () => {
     expect(await revoke.json()).toEqual({ revoked: 1 });
     expect(await desktop.next('account')).toEqual({ type: 'account', status: 'invalid' });
     expect(textOf(await internalCall('user_alice', 'list_browsers'))).not.toMatch(/Windows/);
+  });
+
+  it('account mode: checks page-read compatibility on the selected browser before dispatch', async () => {
+    const old = await browser({ account: issue('user_compat'), name: 'Old Chrome', extensionVersion: '0.3.5' });
+    const unknown = await browser({ account: issue('user_compat'), name: 'Unknown Chrome', extensionVersion: '0.4.0-beta' });
+    const current = await browser({ account: issue('user_compat'), name: 'Current Chrome', extensionVersion: '0.4.0.1' });
+
+    for (const extension of [old, unknown]) {
+      for (const args of [{ format: 'links' }, { offset: 100 }, { selector: 'main' }]) {
+        const result = await internalCall('user_compat', 'read_page', { browser: await extension.browserId(), tabId: 3, ...args });
+        expect(result.isError).toBe(true);
+        expect(textOf(result)).toContain('Update Tabpass to 0.4.0 or later');
+      }
+      expect(extension.calls).toHaveLength(0);
+    }
+    expect(current.calls).toHaveLength(0);
+
+    const advanced = { tabId: 3, format: 'links', offset: 100, selector: 'main' };
+    expect(textOf(await internalCall('user_compat', 'read_page', { browser: await current.browserId(), ...advanced }))).toBe('ok:read_page');
+    expect(current.calls[0]).toMatchObject({ tool: 'read_page', args: advanced, account: { via: 'Claude' } });
+    const defaults = { tabId: 3, format: 'markdown', offset: 0, interactive: true };
+    expect(textOf(await internalCall('user_compat', 'read_page', { browser: await old.browserId(), ...defaults }))).toBe('ok:read_page');
+    expect(old.calls[0]).toMatchObject({ tool: 'read_page', args: defaults, account: { via: 'Claude' } });
   });
 
   it('account mode: unknown credentials are invalid, provider outages are not', async () => {

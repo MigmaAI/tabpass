@@ -52,6 +52,21 @@ export function errorResult(message: string): ToolResult {
   return { content: [{ type: 'text', text: message }], isError: true };
 }
 
+/** Old extensions ignore the new read arguments. Reject those requests instead of returning
+ * a different document or repeating its first page under the requested format/offset. */
+export function readPageCompatibilityError(extensionVersion: string, tool: string, args: Record<string, unknown>): ToolResult | null {
+  if (tool !== 'read_page') return null;
+  const advanced = (args.format !== undefined && args.format !== 'markdown')
+    || (typeof args.offset === 'number' && args.offset > 0)
+    || (typeof args.selector === 'string' && args.selector.length > 0);
+  if (!advanced) return null;
+  // Chrome manifest versions have three or four numeric components. Compare numbers, not strings
+  // (0.10.0 is newer than 0.4.0). Unknown versions keep basic reads but cannot promise new formats.
+  const version = /^(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?$/.exec(extensionVersion);
+  if (version && (Number(version[1]) > 0 || Number(version[2]) >= 4)) return null;
+  return errorResult('Update Tabpass to 0.4.0 or later in this browser to use read_page format, selector or offset. Basic reads still work.');
+}
+
 /** Picks one of a person's browsers: the named one, or the one they used last. */
 export function chooseBrowser(browsers: AccountBrowser[], wanted?: string): { browser: AccountBrowser } | { error: string } {
   const sorted = [...browsers].sort((a, b) => b.lastActiveAt - a.lastActiveAt);

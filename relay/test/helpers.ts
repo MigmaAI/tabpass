@@ -28,7 +28,7 @@ export class FakeExtension {
   async connect(
     url: string,
     agents: FakeAgent[],
-    options: { protocol?: number; account?: AccountCredential; browserName?: string } = {}
+    options: { protocol?: number; account?: AccountCredential; browserName?: string; extensionVersion?: string } = {}
   ): Promise<RelayMessage> {
     this.socket = new WebSocket(url);
     await new Promise<void>((resolve, reject) => {
@@ -50,7 +50,7 @@ export class FakeExtension {
       type: 'hello',
       protocol: options.protocol ?? PROTOCOL_VERSION,
       browserKey: this.browserKey,
-      extensionVersion: 'test',
+      extensionVersion: options.extensionVersion ?? '0.4.0',
       browserName: options.browserName ?? 'Test Chrome',
       agents: this.grants(agents),
       ...(options.account ? { account: options.account } : {}),

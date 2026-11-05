@@ -74,6 +74,8 @@ Migma uses the public Web Protocol through [`@migma/tabpass-connect`](connect/RE
 
 Every page result starts with a line marking the content as untrusted, and the server instructions tell tools never to follow instructions found in pages.
 
+The new `read_page` formats, selectors and offset paging require extension 0.4.0 or later. A newer relay returns an update error when an older browser cannot honor those arguments; basic Markdown reads still work. For Google Docs, HTML is escaped plain text in a `<pre>` block. For Sheets, HTML is an escaped table from the current tab's CSV export. Neither returns Google's raw HTML or preserves its styling.
+
 ## Repository
 
 ```
@@ -166,7 +168,8 @@ yarn --cwd relay build && cd e2e && xvfb-run -a node store-assets.mjs
 ## Known limits
 
 - Clicks and keys are DOM events, not real input, so pages get no user activation. `window.open` popups, some clipboard and file-picker flows, and sites that check `event.isTrusted` will not respond.
-- Top frame only: no iframes or closed shadow roots. Canvas apps have no DOM text. The Google Docs and Sheets readers use their export endpoints and **are not yet tested against real Google accounts**.
+- Reading includes visible same-origin frames and open shadow roots. Cross-origin frames are named for a separate permitted read; closed shadow roots and actions inside frames are not supported. Canvas apps have no DOM text. The Google Docs and Sheets readers use their export endpoints and **are not yet tested against real Google accounts**.
+- A page can cancel a click to handle it itself or ask for confirmation. Tabpass respects that cancellation, including when Chrome blocks a popup the page tried to open. An uncanceled new-tab link still has a fallback if Chrome does not open it.
 - Local `.docx` and PDF files are not supported yet.
 - A PDF comes back as plain text, with no tables or images. A scanned or password-protected PDF returns a note instead of text, and text in an East Asian font encoding that the file does not embed is left out, with a note, because the extension does not ship PDF.js's 1.6 MB of character maps.
 

@@ -5,8 +5,35 @@
     <a id="new-tab" href="/second.html?from=link" target="_blank">Unsubscribe</a>
     <a id="rewritten" href="/second.html?from=original" target="_blank">Rewritten on mousedown</a>
     <a id="scripted" href="/second.html?from=scripted" target="_blank">Opened by page script</a>
+    <a id="confirmation" href="/second.html?from=confirmation" target="_blank">Ask before opening</a>
+    <dialog id="confirmation-modal"><p>Open this destination?</p><button id="cancel-confirmation">Cancel</button></dialog>
+    <a id="stopped" href="/second.html?from=stopped" target="_blank">Canceled without bubbling</a>
+    <p id="stopped-result"></p>
     <a id="same-tab" href="/second.html?from=same">Same tab</a>
+    <fieldset disabled>
+      <button id="fieldset-button">Disabled by fieldset</button>
+      <div>
+        <input id="fieldset-input" type="button" value="Nested disabled input">
+        <button id="fieldset-nested-button">Nested disabled button</button>
+      </div>
+    </fieldset>
+    <p id="disabled-click-count">0</p>
+    <button id="recursive-click">Recursive click handler</button>
+    <p id="recursive-click-count">0</p>
     <script>
+      document.getElementById('recursive-click').addEventListener('click', (event) => {
+        const count = document.getElementById('recursive-click-count');
+        count.textContent = String(Number(count.textContent) + 1);
+        event.currentTarget.click();
+      });
+      for (const id of ['fieldset-button', 'fieldset-input', 'fieldset-nested-button']) {
+        for (const type of ['mousedown', 'click']) {
+          document.getElementById(id).addEventListener(type, () => {
+            const count = document.getElementById('disabled-click-count');
+            count.textContent = String(Number(count.textContent) + 1);
+          });
+        }
+      }
       document.getElementById('rewritten').addEventListener('mousedown', (event) => {
         event.currentTarget.href = '/second.html?from=rewritten';
       });
@@ -14,6 +41,18 @@
       document.getElementById('scripted').addEventListener('click', (event) => {
         event.preventDefault();
         window.scriptedOpenResult = window.open(event.currentTarget.href) ? 'opened' : 'blocked';
+      });
+      document.getElementById('confirmation').addEventListener('click', (event) => {
+        event.preventDefault();
+        document.getElementById('confirmation-modal').showModal();
+      });
+      document.getElementById('cancel-confirmation').addEventListener('click', () => {
+        document.getElementById('confirmation-modal').close();
+      });
+      document.getElementById('stopped').addEventListener('click', (event) => {
+        event.stopPropagation();
+        event.preventDefault();
+        document.getElementById('stopped-result').textContent = 'Canceled by page';
       });
     </script>
   </body>

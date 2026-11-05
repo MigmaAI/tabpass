@@ -1,7 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 
 import { httpAccountVerifier, type AccountVerifier, type BrowserAccount } from '../core/accounts.js';
-import { errorResult, MESSAGES, PendingCalls, type AgentLookup } from '../core/directory.js';
+import { errorResult, MESSAGES, PendingCalls, readPageCompatibilityError, type AgentLookup } from '../core/directory.js';
 import {
   PROTOCOL_VERSION,
   parseExtensionMessage,
@@ -299,6 +299,8 @@ export class BrowserObject extends DurableObject<Env> {
   }
 
   private dispatch(socket: WebSocket, call: Pick<CallMessage, 'tool' | 'args' | 'tokenHash' | 'account'>): Promise<ToolResult> {
+    const incompatible = readPageCompatibilityError(this.session!.extensionVersion, call.tool, call.args);
+    if (incompatible) return Promise.resolve(incompatible);
     return this.pending.start(this.session!.browserId, (id) => this.send(socket, { type: 'call', id, ...call }));
   }
 

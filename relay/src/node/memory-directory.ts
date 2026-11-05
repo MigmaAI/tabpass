@@ -6,6 +6,7 @@ import {
   errorResult,
   MESSAGES,
   PendingCalls,
+  readPageCompatibilityError,
   type AccountBrowser,
   type AccountCallOptions,
   type AgentLookup,
@@ -328,6 +329,8 @@ export class MemoryDirectory implements BrowserDirectory {
   }
 
   private dispatch(browser: BrowserConnection, call: Pick<CallMessage, 'tool' | 'args' | 'tokenHash' | 'account'>): Promise<ToolResult> {
+    const incompatible = readPageCompatibilityError(browser.extensionVersion, call.tool, call.args);
+    if (incompatible) return Promise.resolve(incompatible);
     return this.pending.start(browser.browserId, (id) => this.send(browser.socket, { type: 'call', id, ...call }));
   }
 

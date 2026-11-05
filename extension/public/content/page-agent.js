@@ -94,7 +94,7 @@
     if (labelledBy) {
       const text = labelledBy
         .split(/\s+/)
-        .map((id) => document.getElementById(id)?.innerText ?? '')
+        .map((id) => el.getRootNode().getElementById(id)?.innerText ?? '')
         .join(' ')
         .trim();
       if (text) return text;
@@ -107,7 +107,7 @@
     }
     if (el instanceof HTMLInputElement && ['submit', 'button', 'reset'].includes(el.type)) return el.value;
     const placeholder = el.getAttribute('placeholder');
-    const text = el instanceof HTMLElement ? el.innerText?.trim() : '';
+    const text = el.innerText?.trim();
     if (text) return text;
     if (placeholder) return placeholder;
     const img = el.querySelector?.('img[alt]');
@@ -327,6 +327,7 @@
       if (node.nodeType !== Node.ELEMENT_NODE) return;
       const el = node;
       const tag = el.tagName.toUpperCase();
+      if (!isReadableContainer(el)) return;
       if (tag === 'IFRAME') {
         const body = el.contentDocument?.body;
         if (body) {
@@ -338,7 +339,7 @@
         }
         return;
       }
-      if (SKIP_TAGS.has(tag) || !isReadableContainer(el)) return;
+      if (SKIP_TAGS.has(tag)) return;
 
       const heading = /^H([1-6])$/.exec(tag);
       if (heading) {
@@ -485,13 +486,15 @@
         return;
       }
       if (node.nodeType !== Node.ELEMENT_NODE) return;
+      if (!isReadableContainer(node)) return;
       if (full && node.localName === 'iframe') {
         const body = node.contentDocument?.body;
-        if (body) for (const child of body.childNodes) walk(child, depth + 1, false);
-        else noteUnreadFrame(node, unread);
+        if (body) {
+          if (isReadableContainer(body)) for (const child of body.childNodes) walk(child, depth + 1, false);
+        } else noteUnreadFrame(node, unread);
         return;
       }
-      if (SKIP_TAGS.has(node.tagName.toUpperCase()) || !isReadableContainer(node) || node.isContentEditable) return;
+      if (SKIP_TAGS.has(node.tagName.toUpperCase()) || node.isContentEditable) return;
       const tag = tagFor(node);
       const attrs = [];
       for (const name of attributes) {
@@ -518,13 +521,29 @@
     return { html: pieces.join(''), htmlTruncated: truncated };
   }
 
+  // Prune hidden subtrees before entering frames or shadow roots. Frame elements belong to
+  // another Window, so use nodeType rather than instanceof Element when traversing them.
+  function* readableElements(root, unread) {
+    if (root.nodeType !== Node.ELEMENT_NODE || !isReadableContainer(root)) return;
+    if (root.localName === 'iframe') {
+      const body = root.contentDocument?.body;
+      if (body) yield* readableElements(body, unread);
+      else noteUnreadFrame(root, unread);
+      return;
+    }
+    if (SKIP_TAGS.has(root.tagName.toUpperCase())) return;
+    yield root;
+    for (const child of root.children) yield* readableElements(child, unread);
+    if (root.shadowRoot) for (const child of root.shadowRoot.children) yield* readableElements(child, unread);
+  }
+
   /** Every visible link, once. Stops at maxChars. */
-  function pageLinks(roots, maxChars) {
+  function pageLinks(roots, maxChars, unread) {
     const seen = new Set();
     const lines = [];
     let length = 0;
     for (const root of roots) {
-      for (const el of allElements(root)) {
+      for (const el of readableElements(root, unread)) {
         if (length > maxChars) return { body: lines.join('\n'), cut: true };
         if (el.localName !== 'a' || typeof el.href !== 'string' || !/^(https?|mailto|tel):/i.test(el.href)) continue;
         if (seen.has(el.href) || !isVisible(el)) continue;
@@ -538,12 +557,12 @@
   }
 
   /** Every visible image with an address, once, with its size on the page. Stops at maxChars. */
-  function pageImages(roots, maxChars) {
+  function pageImages(roots, maxChars, unread) {
     const seen = new Set();
     const lines = [];
     let length = 0;
     for (const root of roots) {
-      for (const el of allElements(root)) {
+      for (const el of readableElements(root, unread)) {
         if (length > maxChars) return { body: lines.join('\n'), cut: true };
         if (el.localName !== 'img') continue;
         const src = el.currentSrc || el.src;
@@ -627,7 +646,9 @@
     // A match inside another match would otherwise be read twice.
     const matched = new Set(matches);
     return [...matched].filter((el) => {
-      for (let parent = el.parentElement; parent; parent = parent.parentElement) if (matched.has(parent)) return false;
+      for (let parent = el.parentElement; parent; parent = parent.parentElement) {
+        if (matched.has(parent) || !isReadableContainer(parent)) return false;
+      }
       return true;
     });
   }
@@ -641,9 +662,9 @@
         return { body: html, cut: htmlTruncated };
       }
       case 'links':
-        return pageLinks(roots, limit);
+        return pageLinks(roots, limit, unread);
       case 'images':
-        return pageImages(roots, limit);
+        return pageImages(roots, limit, unread);
       case 'metadata':
         return { body: pageMetadata(), cut: false };
       default:
@@ -717,15 +738,30 @@
 
   function click(args) {
     const el = resolveTarget(args);
-    if (el.disabled) throw new Error('That element is disabled.');
+    if (el.disabled || el.matches(':disabled')) throw new Error('That element is disabled.');
     const label = describeElement(el);
     pointerSequence(el);
     // Read after the pointer events: pages such as webmail rewrite the address on mousedown.
     const link = el.closest('a[href]');
-    const opensTab = typeof link?.target === 'string' && /^_blank$/i.test(link.target) && /^https?:/i.test(link.href) ? link.href : null;
-    if (typeof el.click === 'function') el.click();
-    else el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, composed: true, view: window }));
-    return { clicked: label, opensTab };
+    let event;
+    const observe = (clickEvent) => {
+      if (!event && clickEvent.composedPath().includes(el)) event = clickEvent;
+    };
+    window.addEventListener('click', observe, true);
+    try {
+      // Keep native activation behavior, including its guard against recursive .click() calls.
+      if (typeof el.click === 'function') el.click();
+      else {
+        event = new MouseEvent('click', { bubbles: true, cancelable: true, composed: true, view: window });
+        el.dispatchEvent(event);
+      }
+    } finally {
+      window.removeEventListener('click', observe, true);
+    }
+    // A canceled click may open a confirmation or handle navigation itself. Never bypass it
+    // with a worker-created tab, even if the page's own window.open was blocked by Chrome.
+    const linkUrl = typeof link?.target === 'string' && /^_blank$/i.test(link.target) && /^https?:/i.test(link.href) ? link.href : null;
+    return { clicked: label, opensTab: event && !event.defaultPrevented ? linkUrl : null, linkUrl };
   }
 
   function keyInit(key) {
@@ -1124,11 +1160,11 @@
     return {};
   }
 
-  async function fetchText({ url, html = false }) {
+  async function fetchText({ url }) {
     const response = await fetch(url, { credentials: 'include' });
     const type = response.headers.get('content-type') ?? '';
-    const signedOut = !html || new URL(response.url).hostname === 'accounts.google.com';
-    if (!response.ok || (type.includes('text/html') && signedOut)) throw new Error(`Export failed (${response.status}).`);
+    if (!response.ok || /text\/html|application\/xhtml\+xml/i.test(type)
+      || (response.url && new URL(response.url).hostname === 'accounts.google.com')) throw new Error(`Export failed (${response.status}).`);
     return { text: await response.text() };
   }
 
